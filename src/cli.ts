@@ -10,6 +10,7 @@
 
 import { Command } from "commander";
 import { readGraph, toGraphology } from "./graph.js";
+import { build } from "./build.js";
 import { graphPath } from "./paths.js";
 import { EDGE_CLASS, type EdgeRelation } from "./schema.js";
 
@@ -34,7 +35,13 @@ program
   .option("--watch", "watch + rebuild on save")
   .option("--no-viz", "skip graph.html emission")
   .option("--resolution <n>", "Louvain resolution", parseFloat)
-  .action((path: string) => todo("Phase 1+")(path));
+  .action(async (path: string, opts: { viz?: boolean }) => {
+    const { doc, activated, dangling, outPath, vizPath } = await build(path, { viz: opts.viz });
+    console.log(`adapters fired: ${activated.length ? activated.join(", ") : "none"}`);
+    console.log(`${doc.nodes.length} nodes, ${doc.edges.length} edges → ${outPath}`);
+    if (vizPath) console.log(`viz → ${vizPath}`);
+    if (dangling) console.warn(`⚠ ${dangling} dangling edge(s)`);
+  });
 
 // ── Read side ─────────────────────────────────────────────────────────────────
 
