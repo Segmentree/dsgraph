@@ -1,0 +1,25 @@
+@import 'tailwindcss';
+
+:root {
+  --background: oklch(1 0 0);
+  --primary: oklch(54.616% 0.21529 262.896);
+  --secondary: oklch(0.97 0 0);
+  --muted: oklch(0.97 0 0);
+  --radius: 0.625rem;
+  --sidebar-foreground-hover: oklch(0.2 0 0);
+}
+
+.dark {
+  --background: oklch(0.21 0.01 286);
+  --primary: oklch(62.31% 0.1881 259.83);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-muted: var(--muted);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --text-sm: 13.75px;
+}
