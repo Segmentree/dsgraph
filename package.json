@@ -23,8 +23,7 @@
     "commander": "^12.1.0",
     "culori": "^4.0.2",
     "graphology": "^0.25.4",
-    "graphology-types": "^0.24.7",
-    "postcss": "^8.5.15"
+    "graphology-types": "^0.24.7"
   },
   "devDependencies": {
     "@types/culori": "^4.0.1",
