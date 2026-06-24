@@ -13,6 +13,16 @@ import { readGraph, toGraphology } from "./graph.js";
 import { build } from "./build.js";
 import { graphPath } from "./paths.js";
 import { EDGE_CLASS, type EdgeRelation } from "./schema.js";
+import { match } from "./query/match.js";
+import { explain } from "./query/explain.js";
+import { query } from "./query/query.js";
+import type { DsGraph } from "./query/util.js";
+
+/** Load graph.json from a project root into a traversable graph. */
+async function loadGraph(root: string): Promise<DsGraph> {
+  const doc = await readGraph(graphPath(root));
+  return toGraphology(doc).graph;
+}
 
 const program = new Command();
 
@@ -52,19 +62,46 @@ program
 program
   .command("query <q>")
   .description("best-first weighted traversal from NL seeds (§10.1)")
-  .option("--dfs", "depth-first frontier")
-  .option("--budget <n>", "token budget", (v) => parseInt(v, 10), 2000)
-  .action(todo("Phase 1"));
+  .option("--root <dir>", "project root containing dsgraph-out/", ".")
+  .option("--budget <n>", "max nodes to surface", (v) => parseInt(v, 10), 30)
+  .action(async (q: string, opts: { root: string; budget: number }) => {
+    const graph = await loadGraph(opts.root);
+    const { seeds, nodes } = query(graph, q, opts.budget);
+    if (!seeds.length) return console.log(`no seeds matched "${q}"`);
+    console.log(`query "${q}" — seeds: ${seeds.join(", ")}`);
+    for (const n of nodes) {
+      console.log(`  ${"  ".repeat(n.hop)}[${n.hop}] ${n.label} (${n.type}) rel=${n.relevance}`);
+    }
+  });
 
 program
   .command("path <a> <b>")
   .description("shortest / k-shortest path between two nodes (§10.2)")
-  .action(todo("Phase 1"));
+  .action(todo("a later unit"));
 
 program
   .command("explain <x>")
   .description("neighborhood digest grouped by relation (§10.3)")
-  .action(todo("Phase 1"));
+  .option("--root <dir>", "project root containing dsgraph-out/", ".")
+  .action(async (x: string, opts: { root: string }) => {
+    const graph = await loadGraph(opts.root);
+    const r = explain(graph, x);
+    if (!r) return console.log(`no node matched "${x}"`);
+    console.log(`${r.label} (${r.type})  [${r.id}]`);
+    if (r.props) console.log(`  props: ${formatProps(r.props)}`);
+    for (const g of r.groups) {
+      console.log(`  ${g.relation}:`);
+      for (const nb of g.neighbors) {
+        const arrow = nb.direction === "out" ? "→" : "←";
+        const extra = nb.props?.["mode"] ? ` (${nb.props["mode"]})` : "";
+        const conf = nb.confidence ? ` [${nb.confidence}]` : "";
+        console.log(`    ${arrow} ${nb.label}${extra}${conf}`);
+      }
+    }
+    if (r.sharesValueWith.length) {
+      console.log(`  shares value with: ${r.sharesValueWith.map((s) => s.label).join(", ")}`);
+    }
+  });
 
 program
   .command("impact <x>")
@@ -79,7 +116,40 @@ program
 program
   .command("match <value>")
   .description("canonicalize a literal value → RawValue → tokens + neighbors (§10.6)")
-  .action(todo("Phase 1"));
+  .option("--root <dir>", "project root containing dsgraph-out/", ".")
+  .action(async (value: string, opts: { root: string }) => {
+    const graph = await loadGraph(opts.root);
+    const r = match(graph, value);
+    const ty = r.valueType ? ` (${r.valueType})` : "";
+    console.log(`match "${r.input}"${ty}`);
+    if (r.inSystem && r.exact) {
+      console.log(`  in system: ${r.exact.rawValueId}`);
+      console.log(`  carried by: ${formatTokens(r.exact.tokens)}`);
+      if (r.similar.length) {
+        console.log("  similar:");
+        for (const s of r.similar) {
+          console.log(`    Δ${s.distance ?? "?"}  ${s.label} → ${formatTokens(s.tokens)}`);
+        }
+      }
+    } else if (r.nearest.length) {
+      console.log("  not in system. nearest:");
+      for (const s of r.nearest) console.log(`    Δ${s.distance}  ${s.label} → ${formatTokens(s.tokens)}`);
+    } else {
+      console.log("  not in system, no near matches.");
+    }
+  });
+
+function formatTokens(tokens: { label: string; mode?: string }[]): string {
+  if (!tokens.length) return "(no tokens)";
+  return tokens.map((t) => (t.mode ? `${t.label}:${t.mode}` : t.label)).join(", ");
+}
+
+function formatProps(props: Record<string, unknown>): string {
+  return Object.entries(props)
+    .filter(([, v]) => typeof v !== "object")
+    .map(([k, v]) => `${k}=${v}`)
+    .join(" ");
+}
 
 // ── Plumbing (live in Phase 0) ────────────────────────────────────────────────
 
