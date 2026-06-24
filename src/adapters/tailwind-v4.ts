@@ -63,6 +63,18 @@ const ROOT_VAR_SIGNAL = /:root[^{]*\{[^}]*--/s;
 const VAR_ALIAS_RE = /^var\(\s*--([\w-]+)\s*\)$/;
 const COMPONENTS_JSON = "components.json";
 
+/** Name-hint patterns to categorize a primitive var whose value type isn't obvious. */
+const NAME_HINT: Array<[RegExp, TokenCategory]> = [
+  [/radius/, TokenCategory.radius],
+  [/shadow/, TokenCategory.shadow],
+  [/font|family/, TokenCategory.fontFamily],
+  [/text|size|leading/, TokenCategory.fontSize],
+];
+/** A resolved value containing a digit is treated as a dimension fallback. */
+const HAS_DIGIT_RE = /\d/;
+/** Leading path separator stripped when making a path repo-relative. */
+const LEADING_PATH_SEP_RE = /^[/\\]/;
+
 // ── Detection ─────────────────────────────────────────────────────────────────
 
 /** Find token CSS: prefer the path in shadcn `components.json`, else scan for `@theme`. */
@@ -279,19 +291,17 @@ async function extract(ctx: AdapterContext): Promise<GraphFragment> {
 function detectCategory(rv: RawVar, table: VarTable): TokenCategory {
   const resolved = resolveValue(rv.light ?? rv.dark ?? "", table) ?? rv.light ?? rv.dark ?? "";
   if (parseColor(resolved)) return TokenCategory.color;
-  const n = rv.name;
-  if (/radius/.test(n)) return TokenCategory.radius;
-  if (/shadow/.test(n)) return TokenCategory.shadow;
-  if (/font|family/.test(n)) return TokenCategory.fontFamily;
-  if (/text|size|leading/.test(n)) return TokenCategory.fontSize;
-  if (/\d/.test(resolved)) return TokenCategory.spacing;
+  for (const [pattern, category] of NAME_HINT) {
+    if (pattern.test(rv.name)) return category;
+  }
+  if (HAS_DIGIT_RE.test(resolved)) return TokenCategory.spacing;
   return TokenCategory.other;
 }
 
 function relativeTo(root: string, file: string): string {
   const r = resolve(root);
   const f = resolve(file);
-  return f.startsWith(r) ? f.slice(r.length).replace(/^[/\\]/, "") : f;
+  return f.startsWith(r) ? f.slice(r.length).replace(LEADING_PATH_SEP_RE, "") : f;
 }
 
 // ── Adapter ───────────────────────────────────────────────────────────────────
