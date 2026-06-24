@@ -89,3 +89,19 @@ function labColor(c: ColorLike): { mode: "lab"; l: number; a: number; b: number 
 export function deltaE2000(a: ColorLike, b: ColorLike): number {
   return ciede2000(labColor(a), labColor(b));
 }
+
+const HEX_RE = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+const COLOR_FN_RE = /^(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color)\s*\(/i;
+const WORD_RE = /^[a-z]+$/i;
+
+/**
+ * True only for UNAMBIGUOUS color syntax — `#hex`, a color function, or a CSS named
+ * color. Unlike `parseColor` (culori), this rejects bare numbers and arbitrary words
+ * that culori would otherwise mis-read as hex (e.g. `100` → `#110000`). Use this for
+ * *deciding whether a value is a color*; use `parseColor` once that's settled.
+ */
+export function isColorSyntax(value: string): boolean {
+  const s = value.trim();
+  if (HEX_RE.test(s) || COLOR_FN_RE.test(s)) return true;
+  return WORD_RE.test(s) && parseColor(s) !== null; // named color (letters only)
+}

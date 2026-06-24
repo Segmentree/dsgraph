@@ -14,6 +14,7 @@ import { runAdapters, type Adapter } from "./adapters/registry.js";
 import { tailwindV4Adapter } from "./adapters/tailwind-v4.js";
 import { tailwindConfigAdapter } from "./adapters/tailwind-config.js";
 import { deriveSimilarTo } from "./derive/similar-to.js";
+import { deriveComposition } from "./derive/composition.js";
 import { ValueType, type GraphDocument } from "./schema.js";
 
 /** Token/structural adapters, in registration order (DESIGN.md §4). */
@@ -26,6 +27,8 @@ export interface BuildResult {
   dangling: number;
   /** Count of derived similar-to edges. */
   similar: number;
+  /** Tokens whose value couldn't be canonicalized (visible, not silently dropped). */
+  unresolvedTokens: number;
   outPath: string;
   vizPath?: string;
 }
@@ -43,9 +46,17 @@ export interface BuildOptions {
 export async function build(root: string, opts: BuildOptions = {}): Promise<BuildResult> {
   const adapters = opts.adapters ?? DEFAULT_ADAPTERS;
   const activated = await runAdapters(adapters, { root });
-  const doc = mergeFragments(activated.map((a) => a.fragment));
+  const merged = mergeFragments(activated.map((a) => a.fragment));
 
-  // Derived layer: perceptual/numeric value similarity (§6b).
+  // Derived layer 1: materialize composite sub-values + composed-of (§6a). Re-merge so
+  // sub-values that equal existing RawValues dedup by id.
+  const doc = mergeFragments([
+    { nodes: merged.nodes, edges: merged.edges },
+    deriveComposition(merged),
+  ]);
+
+  // Derived layer 2: perceptual/numeric value similarity (§6b) — now also over the
+  // materialized sub-values.
   const similarEdges = deriveSimilarTo(doc, {
     epsilon: opts.similarEpsilon === undefined ? undefined : { [ValueType.color]: opts.similarEpsilon },
   });
@@ -61,11 +72,16 @@ export async function build(root: string, opts: BuildOptions = {}): Promise<Buil
     await writeViz(viz, doc);
   }
 
+  const unresolvedTokens = doc.nodes.filter(
+    (n) => n.type === "Token" && n.props?.["unresolvedValue"] !== undefined,
+  ).length;
+
   return {
     doc,
     activated: activated.map((a) => a.adapter.name),
     dangling: findDanglingEdges(doc).length,
     similar: similarEdges.length,
+    unresolvedTokens,
     outPath,
     vizPath: viz,
   };
