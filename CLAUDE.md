@@ -97,5 +97,18 @@ bare `gh` here — it would default to the work account.
 
 ## Conventions
 
-- No code comments unless asked (user's standing rule).
+- **No magic values.** Hardcoded numbers, strings, and regexes become named `const`s
+  (e.g. `BASE_ROOT_PX = 16`, `LENGTH_RE`, `MAX_8BIT = 255`). No bare literals in logic.
+- **Enum-like vocabularies = `const` object + derived same-name union type.** Define each
+  closed string set once as a frozen object and derive the type from it, so values and type
+  can never drift:
+  ```ts
+  export const ValueType = { color: "color", dimension: "dimension" /* … */ } as const;
+  export type ValueType = (typeof ValueType)[keyof typeof ValueType];
+  ```
+  Then reference the named members everywhere — `case`/`switch` labels, `return`s, and
+  constructed node/edge objects (`type: NodeType.RawValue`, not `type: "RawValue"`). The
+  domain vocabularies live in `src/schema.ts` (`NodeType`, `ValueType`, `TokenCategory`,
+  `EdgeRelation`, …); import and reuse them, never re-spell the literals. Tests may assert
+  against literals directly (pinning the wire value is the point).
 - `references/` and `dsgraph-out/` are git-ignored.
