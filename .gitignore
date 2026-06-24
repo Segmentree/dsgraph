@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+*.tsbuildinfo
+
+# graph output (regenerated; commit selectively per-project later)
+dsgraph-out/
+
+# read-only reference material (cloned, not ours — see CLAUDE.md)
+references/
+
+# graphify's own output if we run it for orientation
+graphify-out/
+
+# misc
+.DS_Store
+*.log
