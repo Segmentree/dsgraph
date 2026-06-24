@@ -12,10 +12,11 @@ import { graphPath, vizPath } from "./paths.js";
 import { writeViz } from "./viz.js";
 import { runAdapters, type Adapter } from "./adapters/registry.js";
 import { tailwindV4Adapter } from "./adapters/tailwind-v4.js";
+import { tailwindConfigAdapter } from "./adapters/tailwind-config.js";
 import type { GraphDocument } from "./schema.js";
 
 /** Token/structural adapters, in registration order (DESIGN.md §4). */
-export const DEFAULT_ADAPTERS: Adapter[] = [tailwindV4Adapter];
+export const DEFAULT_ADAPTERS: Adapter[] = [tailwindV4Adapter, tailwindConfigAdapter];
 
 export interface BuildResult {
   doc: GraphDocument;
