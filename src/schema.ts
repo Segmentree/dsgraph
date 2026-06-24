@@ -9,47 +9,70 @@
 /** Schema version of the emitted `graph.json`. Bump on breaking shape changes. */
 export const GRAPH_VERSION = 1 as const;
 
+/**
+ * Enum-like vocabularies. Each is a `const` object (named values for `case`
+ * labels / node construction) paired with a same-named union type derived from
+ * it, so the values and the type can never drift apart.
+ */
+
 /** Confidence tag carried by nodes and structural/bridge edges (DESIGN.md §0, §2). */
-export type Confidence = "EXTRACTED" | "INFERRED" | "AMBIGUOUS";
+export const Confidence = {
+  EXTRACTED: "EXTRACTED",
+  INFERRED: "INFERRED",
+  AMBIGUOUS: "AMBIGUOUS",
+} as const;
+export type Confidence = (typeof Confidence)[keyof typeof Confidence];
 
 /** Which side of the system a fragment came from. */
-export type Side = "code" | "figma";
+export const Side = { code: "code", figma: "figma" } as const;
+export type Side = (typeof Side)[keyof typeof Side];
 
 // ── Node types ──────────────────────────────────────────────────────────────
 
-export type NodeType =
-  | "Token"
-  | "RawValue"
-  | "Component"
-  | "Instance"
-  | "Screen"
-  | "Asset";
+export const NodeType = {
+  Token: "Token",
+  RawValue: "RawValue",
+  Component: "Component",
+  Instance: "Instance",
+  Screen: "Screen",
+  Asset: "Asset",
+} as const;
+export type NodeType = (typeof NodeType)[keyof typeof NodeType];
 
 /** Token category — drives canonicalizer dispatch and slot inference. */
-export type TokenCategory =
-  | "color"
-  | "spacing"
-  | "fontSize"
-  | "fontFamily"
-  | "fontWeight"
-  | "lineHeight"
-  | "radius"
-  | "shadow"
-  | "z"
-  | "other";
+export const TokenCategory = {
+  color: "color",
+  spacing: "spacing",
+  fontSize: "fontSize",
+  fontFamily: "fontFamily",
+  fontWeight: "fontWeight",
+  lineHeight: "lineHeight",
+  radius: "radius",
+  shadow: "shadow",
+  z: "z",
+  other: "other",
+} as const;
+export type TokenCategory = (typeof TokenCategory)[keyof typeof TokenCategory];
 
 /** Token tier within the system (DESIGN.md §2 node table). */
-export type TokenTier = "primitive" | "semantic" | "alias";
+export const TokenTier = {
+  primitive: "primitive",
+  semantic: "semantic",
+  alias: "alias",
+} as const;
+export type TokenTier = (typeof TokenTier)[keyof typeof TokenTier];
 
 /** The valueType axis for a RawValue; canonicalization is scoped by this. */
-export type ValueType =
-  | "color"
-  | "dimension"
-  | "fontFamily"
-  | "fontWeight"
-  | "typography"
-  | "shadow"
-  | "other";
+export const ValueType = {
+  color: "color",
+  dimension: "dimension",
+  fontFamily: "fontFamily",
+  fontWeight: "fontWeight",
+  typography: "typography",
+  shadow: "shadow",
+  other: "other",
+} as const;
+export type ValueType = (typeof ValueType)[keyof typeof ValueType];
 
 /** Provenance of a node — where an adapter found it. Merged across sources on dedup. */
 export interface SourceRef {
@@ -123,33 +146,41 @@ export type GraphNode =
 // ── Edge types ──────────────────────────────────────────────────────────────
 
 /** Edge relations grouped into the three classes from DESIGN.md §2. */
-export type EdgeRelation =
+export const EdgeRelation = {
   // structural (EXTRACTED)
-  | "has-value"
-  | "aliases"
-  | "uses-token"
-  | "composed-of"
-  | "instance-of"
-  | "renders-on"
+  hasValue: "has-value",
+  aliases: "aliases",
+  usesToken: "uses-token",
+  composedOf: "composed-of",
+  instanceOf: "instance-of",
+  rendersOn: "renders-on",
   // bridge (INFERRED/AMBIGUOUS)
-  | "maps-to"
+  mapsTo: "maps-to",
   // similarity (ΔE-weighted)
-  | "similar-to"
+  similarTo: "similar-to",
   // convention (frequency-weighted)
-  | "commonly-used-with";
+  commonlyUsedWith: "commonly-used-with",
+} as const;
+export type EdgeRelation = (typeof EdgeRelation)[keyof typeof EdgeRelation];
 
-export type EdgeClass = "structural" | "bridge" | "similarity" | "convention";
+export const EdgeClass = {
+  structural: "structural",
+  bridge: "bridge",
+  similarity: "similarity",
+  convention: "convention",
+} as const;
+export type EdgeClass = (typeof EdgeClass)[keyof typeof EdgeClass];
 
 export const EDGE_CLASS: Record<EdgeRelation, EdgeClass> = {
-  "has-value": "structural",
-  aliases: "structural",
-  "uses-token": "structural",
-  "composed-of": "structural",
-  "instance-of": "structural",
-  "renders-on": "structural",
-  "maps-to": "bridge",
-  "similar-to": "similarity",
-  "commonly-used-with": "convention",
+  [EdgeRelation.hasValue]: EdgeClass.structural,
+  [EdgeRelation.aliases]: EdgeClass.structural,
+  [EdgeRelation.usesToken]: EdgeClass.structural,
+  [EdgeRelation.composedOf]: EdgeClass.structural,
+  [EdgeRelation.instanceOf]: EdgeClass.structural,
+  [EdgeRelation.rendersOn]: EdgeClass.structural,
+  [EdgeRelation.mapsTo]: EdgeClass.bridge,
+  [EdgeRelation.similarTo]: EdgeClass.similarity,
+  [EdgeRelation.commonlyUsedWith]: EdgeClass.convention,
 };
 
 export interface GraphEdge {
