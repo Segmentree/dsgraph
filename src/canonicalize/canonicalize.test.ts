@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseColor, deltaE2000 } from "./color.js";
+import { parseColor, deltaE2000, isColorSyntax } from "./color.js";
 import { parseDimension } from "./dimension.js";
 import { canonicalize, rawValueId, categoryToValueType } from "./index.js";
 
@@ -26,6 +26,17 @@ describe("parseColor", () => {
 
   it("returns null for unparseable input", () => {
     expect(parseColor("not-a-color")).toBeNull();
+  });
+
+  it("isColorSyntax rejects what culori would mis-read as hex", () => {
+    // culori.parse('100') succeeds (as #110000) — the strict guard must not.
+    expect(parseColor("100")).not.toBeNull(); // culori is lenient
+    expect(isColorSyntax("100")).toBe(false); // our guard is strict
+    expect(isColorSyntax("0.5")).toBe(false);
+    expect(isColorSyntax("#2563eb")).toBe(true);
+    expect(isColorSyntax("oklch(0.5 0.2 260)")).toBe(true);
+    expect(isColorSyntax("tomato")).toBe(true); // CSS named color
+    expect(isColorSyntax("auto")).toBe(false); // word, but not a color
   });
 
   it("the target's secondary/muted/accent are the same value (exact dup)", () => {
@@ -93,9 +104,16 @@ describe("canonicalize dispatcher", () => {
     expect(canonicalize("semibold", "fontWeight")!.id).toBe("value:fontWeight:600");
   });
 
+  it("canonicalizes a composite shadow into a structured RawValue", () => {
+    const s = canonicalize("0 1px 2px rgba(0,0,0,.1)", "shadow")!;
+    expect(s.id.startsWith("value:shadow:")).toBe(true);
+    expect((s.props?.layers as unknown[]).length).toBe(1);
+  });
+
   it("returns null for non-canonicalizable types/values", () => {
-    expect(canonicalize("0 1px 2px rgba(0,0,0,.1)", "shadow")).toBeNull();
     expect(canonicalize("garbage", "color")).toBeNull();
+    expect(canonicalize("not a shadow", "shadow")).toBeNull();
+    expect(canonicalize("10", "other")).toBeNull(); // no descriptor for `other`
   });
 
   it("maps categories to value types", () => {

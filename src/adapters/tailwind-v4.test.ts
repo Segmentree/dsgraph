@@ -55,6 +55,25 @@ describe("tailwind-v4 adapter", () => {
     expect(t.props?.tier).toBe("primitive");
   });
 
+  it("captures an unknown-namespace token whose value is unambiguous, flagged inferred", () => {
+    // `--brand-glow: oklch(...)` — namespace unknown, but oklch() is unambiguously a color.
+    const t = token(doc, "token:color:glow")!;
+    expect(t.props?.category).toBe("color");
+    expect(t.props?.uncategorizedNamespace).toBe("brand");
+    expect(t.props?.categoryInferred).toBe(true);
+    expect(t.confidence).toBe("INFERRED");
+    expect(hasValue(doc, "token:color:glow")[0]?.target).toBe("value:color:222,62,45,255");
+  });
+
+  it("does NOT guess a category for an ambiguous bare-number value", () => {
+    // `--scale-tight: 100` — could be spacing/z-index/opacity/ms; we refuse to fabricate.
+    const t = token(doc, "token:other:tight")!;
+    expect(t.props?.category).toBe("other");
+    expect(t.props?.categoryInferred).toBe(true);
+    expect(hasValue(doc, "token:other:tight")).toHaveLength(0); // no fabricated value
+    expect(t.props?.unresolvedValue).toBe("100");
+  });
+
   it("emits no dangling edges", () => {
     const ids = new Set(doc.nodes.map((n) => n.id));
     expect(doc.edges.every((e) => ids.has(e.source) && ids.has(e.target))).toBe(true);

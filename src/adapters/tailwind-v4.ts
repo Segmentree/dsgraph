@@ -28,7 +28,7 @@ import {
   type GraphFragment,
   type TokenNode,
 } from "../schema.js";
-import { canonicalize, categoryToValueType, parseColor } from "../canonicalize/index.js";
+import { canonicalize, categoryToValueType, isColorSyntax } from "../canonicalize/index.js";
 import { resolveValue, type VarTable } from "./css-resolve.js";
 import type { Adapter, AdapterContext } from "./registry.js";
 
@@ -49,9 +49,15 @@ const NAMESPACE_CATEGORY: Array<[string, TokenCategory]> = [
   ["font-weight", TokenCategory.fontWeight],
   ["font", TokenCategory.fontFamily],
   ["leading", TokenCategory.lineHeight],
+  ["tracking", TokenCategory.letterSpacing],
   ["spacing", TokenCategory.spacing],
   ["radius", TokenCategory.radius],
+  ["inset-shadow", TokenCategory.shadow],
+  ["drop-shadow", TokenCategory.shadow],
   ["shadow", TokenCategory.shadow],
+  ["blur", TokenCategory.blur],
+  ["aspect", TokenCategory.aspectRatio],
+  ["ease", TokenCategory.easing],
   ["z-index", TokenCategory.z],
 ];
 
@@ -70,8 +76,6 @@ const NAME_HINT: Array<[RegExp, TokenCategory]> = [
   [/font|family/, TokenCategory.fontFamily],
   [/text|size|leading/, TokenCategory.fontSize],
 ];
-/** A resolved value containing a digit is treated as a dimension fallback. */
-const HAS_DIGIT_RE = /\d/;
 /** Leading path separator stripped when making a path repo-relative. */
 const LEADING_PATH_SEP_RE = /^[/\\]/;
 
@@ -180,16 +184,30 @@ function selectorMode(selector: string): Mode | null {
   return null;
 }
 
-function splitNamespace(
-  name: string,
-): { namespace: string; category: TokenCategory; rest: string } | null {
+const NAMESPACE_SEP = "-";
+
+/**
+ * Split a `@theme` var name into namespace + rest. A known namespace yields its
+ * mapped category; an UNKNOWN namespace returns `category: undefined` (the caller
+ * detects it from the value) — we never drop a token just because its namespace
+ * isn't in the map.
+ */
+function splitNamespace(name: string): {
+  namespace: string;
+  category: TokenCategory | undefined;
+  rest: string;
+} {
   for (const [ns, category] of NAMESPACE_CATEGORY) {
     if (name === ns) return { namespace: ns, category, rest: ns };
-    if (name.startsWith(ns + "-")) {
+    if (name.startsWith(ns + NAMESPACE_SEP)) {
       return { namespace: ns, category, rest: name.slice(ns.length + 1) };
     }
   }
-  return null;
+  // Unknown namespace: best-effort prefix; category is decided from the value.
+  const dash = name.indexOf(NAMESPACE_SEP);
+  return dash === -1
+    ? { namespace: name, category: undefined, rest: name }
+    : { namespace: name.slice(0, dash), category: undefined, rest: name.slice(dash + 1) };
 }
 
 // ── Extraction ────────────────────────────────────────────────────────────────
@@ -237,19 +255,24 @@ async function extract(ctx: AdapterContext): Promise<GraphFragment> {
   // 1. Semantic tokens from @theme entries (these define the Tailwind utilities).
   for (const entry of theme) {
     const ns = splitNamespace(entry.name);
-    if (!ns) continue;
-    const tokenId = `token:${ns.category}:${ns.rest}`;
+    // Known namespace → its declared category. Unknown namespace → infer conservatively
+    // from the value (null if ambiguous → `other`, left unresolved), flagged so the
+    // inferred categorization is never presented as declared fact.
+    const inferred = ns.category === undefined;
+    const category = ns.category ?? inferCategory(resolveValue(entry.value, table) ?? entry.value, entry.name) ?? TokenCategory.other;
+    const tokenId = `token:${category}:${ns.rest}`;
     const token: TokenNode = {
       id: tokenId,
       type: NodeType.Token,
       label: ns.rest,
       props: {
-        category: ns.category,
+        category,
         tier: TokenTier.semantic,
         tailwind: { namespace: ns.namespace, utility: ns.rest },
+        ...(inferred ? { uncategorizedNamespace: ns.namespace, categoryInferred: true } : {}),
       },
       sources: [{ adapter: ADAPTER_NAME, file: entry.file, loc: `--${entry.name}` }],
-      confidence: Confidence.EXTRACTED,
+      confidence: inferred ? Confidence.INFERRED : Confidence.EXTRACTED,
     };
 
     const aliasOf = VAR_ALIAS_RE.exec(entry.value)?.[1];
@@ -257,11 +280,11 @@ async function extract(ctx: AdapterContext): Promise<GraphFragment> {
     if (backing) {
       // Collapse the exposed primitive var into this semantic token.
       consumedRawVars.add(backing.name);
-      if (backing.light !== undefined) addValue(token, ns.category, backing.light, Mode.light);
-      if (backing.dark !== undefined) addValue(token, ns.category, backing.dark, Mode.dark);
+      if (backing.light !== undefined) addValue(token, category, backing.light, Mode.light);
+      if (backing.dark !== undefined) addValue(token, category, backing.dark, Mode.dark);
     } else {
       // Literal theme value (calc/number/px) — mode-agnostic.
-      addValue(token, ns.category, entry.value, null);
+      addValue(token, category, entry.value, null);
     }
     nodes.set(tokenId, token);
   }
@@ -287,15 +310,29 @@ async function extract(ctx: AdapterContext): Promise<GraphFragment> {
   return { nodes: [...nodes.values(), ...rawValueNodes], edges };
 }
 
-/** Best-effort category for a primitive var: color by value, else name hint, else dimension. */
+/** A number immediately followed by an explicit length / time unit (unambiguous). */
+const LENGTH_UNIT_RE = /\d\s*(?:px|rem|em|%)/;
+const TIME_UNIT_RE = /\d\s*(?:ms|s)(?![a-z])/;
+
+/**
+ * Category inferable from a value WITHOUT guessing. Returns null for ambiguous values
+ * (a bare number could be spacing, z-index, opacity, ms, …) — we keep such tokens but
+ * leave them uncategorized rather than fabricate a type. Only unambiguous color syntax,
+ * an explicit unit, or a strong name hint yields a category.
+ */
+function inferCategory(resolved: string, name: string): TokenCategory | null {
+  if (isColorSyntax(resolved)) return TokenCategory.color; // #hex / color-fn / named — unambiguous
+  for (const [pattern, category] of NAME_HINT) {
+    if (pattern.test(name)) return category;
+  }
+  if (TIME_UNIT_RE.test(resolved)) return TokenCategory.duration;
+  if (LENGTH_UNIT_RE.test(resolved)) return TokenCategory.spacing;
+  return null; // ambiguous — do not guess
+}
+
 function detectCategory(rv: RawVar, table: VarTable): TokenCategory {
   const resolved = resolveValue(rv.light ?? rv.dark ?? "", table) ?? rv.light ?? rv.dark ?? "";
-  if (parseColor(resolved)) return TokenCategory.color;
-  for (const [pattern, category] of NAME_HINT) {
-    if (pattern.test(rv.name)) return category;
-  }
-  if (HAS_DIGIT_RE.test(resolved)) return TokenCategory.spacing;
-  return TokenCategory.other;
+  return inferCategory(resolved, rv.name) ?? TokenCategory.other;
 }
 
 function relativeTo(root: string, file: string): string {

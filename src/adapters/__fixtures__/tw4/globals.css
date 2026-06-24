@@ -22,4 +22,6 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --text-sm: 13.75px;
+  --brand-glow: oklch(0.6 0.2 30);
+  --scale-tight: 100;
 }

@@ -47,8 +47,16 @@ export const TokenCategory = {
   fontFamily: "fontFamily",
   fontWeight: "fontWeight",
   lineHeight: "lineHeight",
+  letterSpacing: "letterSpacing",
   radius: "radius",
+  borderWidth: "borderWidth",
+  blur: "blur",
+  opacity: "opacity",
+  aspectRatio: "aspectRatio",
+  duration: "duration",
+  easing: "easing",
   shadow: "shadow",
+  gradient: "gradient",
   z: "z",
   other: "other",
 } as const;
@@ -62,14 +70,27 @@ export const TokenTier = {
 } as const;
 export type TokenTier = (typeof TokenTier)[keyof typeof TokenTier];
 
-/** The valueType axis for a RawValue; canonicalization is scoped by this. */
+/**
+ * The valueType axis for a RawValue; canonicalization + similarity are keyed by it.
+ * Grouped by canonical form: scalar (dimension/ratio/duration/ordinal), color,
+ * nominal (fontFamily), and composite (shadow/gradient/typography).
+ */
 export const ValueType = {
   color: "color",
+  /** Length in px — spacing/radius/fontSize/borderWidth/blur/letterSpacing (scope-keyed). */
   dimension: "dimension",
+  /** Unitless number — lineHeight/opacity/aspectRatio (scope-keyed). */
+  ratio: "ratio",
+  /** Time in ms — duration/delay. */
+  duration: "duration",
   fontFamily: "fontFamily",
   fontWeight: "fontWeight",
-  typography: "typography",
+  /** Composite: layered box-shadow, references color sub-values. */
   shadow: "shadow",
+  /** Composite: ordered color stops. */
+  gradient: "gradient",
+  /** Composite: family + size + weight + lineHeight + letterSpacing. */
+  typography: "typography",
   other: "other",
 } as const;
 export type ValueType = (typeof ValueType)[keyof typeof ValueType];

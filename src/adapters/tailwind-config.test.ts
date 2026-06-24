@@ -54,10 +54,14 @@ describe("walkTheme", () => {
     expect(valueOf(doc, "token:fontFamily:sans")).toBe("value:fontFamily:inter");
   });
 
+  it("canonicalizes box-shadow into a composite shadow RawValue", () => {
+    expect(valueOf(doc, "token:shadow:sm")).toBe("value:shadow:0,1,2,0,0,0,0,13");
+  });
+
   it("keeps tokens whose values can't canonicalize, flagged unresolved", () => {
-    const shadow = token(doc, "token:shadow:sm")!;
-    expect(valueOf(doc, "token:shadow:sm")).toBeUndefined();
-    expect(shadow.props?.unresolvedValue).toBe("0 1px 2px rgba(0,0,0,.05)");
+    // zIndex maps to `other`, which has no descriptor → kept but unresolved.
+    expect(valueOf(doc, "token:z:10")).toBeUndefined();
+    expect(token(doc, "token:z:10")?.props?.unresolvedValue).toBe("10");
   });
 
   it("skips function-valued colors and unmapped sections", () => {
