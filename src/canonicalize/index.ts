@@ -82,6 +82,8 @@ export function canonicalize(
         props: {
           valueType: ValueType.dimension,
           px: d.px,
+          // category scope keeps radius/spacing/fontSize in separate similarity groups
+          ...(opts.scope ? { scope: opts.scope } : {}),
           ...(d.baseAssumed ? { baseAssumed: true } : {}),
         },
       };
