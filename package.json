@@ -1,0 +1,33 @@
+{
+  "name": "dsgraph",
+  "version": "0.0.0",
+  "description": "A design-system knowledge graph: tokens + components + Figma into one queryable graph.",
+  "type": "module",
+  "bin": {
+    "dsgraph": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "dsgraph": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "graphology": "^0.25.4",
+    "graphology-types": "^0.24.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}
