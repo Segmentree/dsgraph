@@ -36,9 +36,11 @@ program
   .option("--no-viz", "skip graph.html emission")
   .option("--resolution <n>", "Louvain resolution", parseFloat)
   .action(async (path: string, opts: { viz?: boolean }) => {
-    const { doc, activated, dangling, outPath, vizPath } = await build(path, { viz: opts.viz });
+    const { doc, activated, dangling, similar, outPath, vizPath } = await build(path, {
+      viz: opts.viz,
+    });
     console.log(`adapters fired: ${activated.length ? activated.join(", ") : "none"}`);
-    console.log(`${doc.nodes.length} nodes, ${doc.edges.length} edges → ${outPath}`);
+    console.log(`${doc.nodes.length} nodes, ${doc.edges.length} edges (${similar} similar-to) → ${outPath}`);
     if (vizPath) console.log(`viz → ${vizPath}`);
     if (dangling) console.warn(`⚠ ${dangling} dangling edge(s)`);
   });

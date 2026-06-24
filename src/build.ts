@@ -13,7 +13,8 @@ import { writeViz } from "./viz.js";
 import { runAdapters, type Adapter } from "./adapters/registry.js";
 import { tailwindV4Adapter } from "./adapters/tailwind-v4.js";
 import { tailwindConfigAdapter } from "./adapters/tailwind-config.js";
-import type { GraphDocument } from "./schema.js";
+import { deriveSimilarTo } from "./derive/similar-to.js";
+import { ValueType, type GraphDocument } from "./schema.js";
 
 /** Token/structural adapters, in registration order (DESIGN.md §4). */
 export const DEFAULT_ADAPTERS: Adapter[] = [tailwindV4Adapter, tailwindConfigAdapter];
@@ -23,6 +24,8 @@ export interface BuildResult {
   /** Names of adapters that fired. */
   activated: string[];
   dangling: number;
+  /** Count of derived similar-to edges. */
+  similar: number;
   outPath: string;
   vizPath?: string;
 }
@@ -33,12 +36,21 @@ export interface BuildOptions {
   write?: boolean;
   /** Emit graph.html alongside graph.json (default true when writing). */
   viz?: boolean;
+  /** ΔE threshold for the similar-to layer (default DEFAULT_EPSILON). */
+  similarEpsilon?: number;
 }
 
 export async function build(root: string, opts: BuildOptions = {}): Promise<BuildResult> {
   const adapters = opts.adapters ?? DEFAULT_ADAPTERS;
   const activated = await runAdapters(adapters, { root });
   const doc = mergeFragments(activated.map((a) => a.fragment));
+
+  // Derived layer: perceptual/numeric value similarity (§6b).
+  const similarEdges = deriveSimilarTo(doc, {
+    epsilon: opts.similarEpsilon === undefined ? undefined : { [ValueType.color]: opts.similarEpsilon },
+  });
+  doc.edges.push(...similarEdges);
+
   const outPath = graphPath(root);
   const writing = opts.write !== false;
   if (writing) await writeGraph(outPath, doc);
@@ -53,6 +65,7 @@ export async function build(root: string, opts: BuildOptions = {}): Promise<Buil
     doc,
     activated: activated.map((a) => a.adapter.name),
     dangling: findDanglingEdges(doc).length,
+    similar: similarEdges.length,
     outPath,
     vizPath: viz,
   };
