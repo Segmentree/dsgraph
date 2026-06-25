@@ -31,35 +31,56 @@ const CLASS_COLOR: Record<string, string> = {
   convention: "#34d399",
 };
 
-function nodeColor(node: GraphDocument["nodes"][number]): string {
+const FALLBACK_COLOR = "#9ca3af";
+
+/**
+ * Node color as an explicit `{background, border}` object — NOT a string, and NOT via
+ * vis groups. vis-network's auto-assigned group color silently overrides a per-node
+ * color *string* for some nodes; an explicit object with no `group` field is honored.
+ */
+function nodeColor(node: GraphDocument["nodes"][number]): { background: string; border: string } {
   const rgba = node.props?.["rgba"] as [number, number, number, number] | undefined;
   if (node.type === NodeType.RawValue && rgba) {
-    const [r, g, b, a] = rgba;
-    return `rgba(${r},${g},${b},${(a / 255).toFixed(3)})`;
+    const c = `rgb(${rgba[0]},${rgba[1]},${rgba[2]})`;
+    return { background: c, border: c };
   }
-  return TYPE_COLOR[node.type] ?? "#9ca3af";
+  const c = TYPE_COLOR[node.type] ?? FALLBACK_COLOR;
+  return { background: c, border: c };
 }
 
-/** Build the vis-network node/edge datasets from a graph document. */
+/** Build the vis-network node/edge datasets. Nodes are sized by degree; labels are
+ *  carried separately and shown on hover only (kills overlap at high node counts). */
 function toVisData(doc: GraphDocument) {
+  const degree = new Map<string, number>();
+  for (const e of doc.edges) {
+    degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
+    degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
+  }
   const nodes = doc.nodes.map((n) => ({
     id: n.id,
     label: n.label ?? n.id,
-    group: n.type,
+    value: degree.get(n.id) ?? 0,
     color: nodeColor(n),
     shape: n.type === NodeType.RawValue ? "dot" : "box",
     title: htmlTitle(n.id, n.props),
   }));
+
   const edges = doc.edges.map((e) => ({
     from: e.source,
     to: e.target,
-    label: e.props?.["mode"] ? String(e.props["mode"]) : undefined,
+    label: edgeLabel(e),
     color: { color: CLASS_COLOR[EDGE_CLASS[e.relation as EdgeRelation]] ?? "#cbd5e1" },
     dashes: EDGE_CLASS[e.relation as EdgeRelation] === "similarity",
     arrows: "to",
-    font: { size: 9, color: "#64748b" },
+    font: { size: 10, color: "#94a3b8", strokeWidth: 3, strokeColor: "#0f172a" },
   }));
   return { nodes, edges };
+}
+
+/** Edge label: the mode (light/dark) on has-value edges (as in the original viz). */
+function edgeLabel(e: GraphDocument["edges"][number]): string | undefined {
+  const mode = e.props?.["mode"];
+  return mode ? String(mode) : undefined;
 }
 
 function htmlTitle(id: string, props?: Record<string, unknown>): string {
@@ -98,14 +119,21 @@ export function renderHtml(doc: GraphDocument): string {
 <div id="net"></div>
 <script>
   const { nodes, edges } = ${data};
-  const network = new vis.Network(
+  new vis.Network(
     document.getElementById("net"),
     { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) },
     {
-      nodes: { font: { color: "#e2e8f0", size: 11 }, borderWidth: 0, size: 12 },
+      nodes: {
+        font: { color: "#e2e8f0", size: 12, strokeWidth: 3, strokeColor: "#0f172a" },
+        borderWidth: 2,
+        scaling: { min: 6, max: 40, label: { enabled: true, min: 11, max: 22 } },
+      },
       edges: { smooth: { type: "continuous" }, width: 1 },
-      physics: { barnesHut: { gravitationalConstant: -8000, springLength: 120 }, stabilization: { iterations: 250 } },
-      interaction: { hover: true, tooltipDelay: 120 },
+      physics: {
+        barnesHut: { gravitationalConstant: -22000, springLength: 170, centralGravity: 0.12 },
+        stabilization: { iterations: 300 },
+      },
+      interaction: { hover: true, tooltipDelay: 100 },
     }
   );
 </script>

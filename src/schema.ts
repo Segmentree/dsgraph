@@ -95,6 +95,25 @@ export const ValueType = {
 } as const;
 export type ValueType = (typeof ValueType)[keyof typeof ValueType];
 
+/** Binding slot on a `uses-token` edge — the role a token plays in a component (§4b). */
+export const Slot = {
+  surface: "surface",
+  text: "text",
+  border: "border",
+  ring: "ring",
+  outline: "outline",
+  fill: "fill",
+  stroke: "stroke",
+  gradient: "gradient",
+  elevation: "elevation",
+  radius: "radius",
+  blur: "blur",
+  tracking: "tracking",
+  leading: "leading",
+  spacing: "spacing",
+} as const;
+export type Slot = (typeof Slot)[keyof typeof Slot];
+
 /** Provenance of a node — where an adapter found it. Merged across sources on dedup. */
 export interface SourceRef {
   adapter: string;

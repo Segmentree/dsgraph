@@ -37,7 +37,7 @@ The three uses, combined: **drift detection**, **discoverability/docs**, and
    only a tiebreaker inside a value cluster. See DESIGN.md §3, §7.
 5. **Tune thresholds (ΔE ε=10, near-miss τ=3, etc.) on real data**, not upfront.
 6. **graphify = optional structural-import adapter + dev-time oracle, NOT the primary
-   extractor.** Reasons in DESIGN.md §0.1. Our native tree-sitter component adapter is the
+   extractor.** Reasons in DESIGN.md §0.1. Our native ts-morph component adapter is the
    spine. graphify is MIT — if we ever port a substantial code block, include its MIT notice.
 7. **First real target: the user's web dashboard** — `~/projects/web-apps/apps/web`, a
    Next.js + React + TypeScript app in a **pnpm monorepo**. The design system is a shared
@@ -60,7 +60,7 @@ Then read its `graphify-out/graph.json` to see the component skeleton it found.
 
 ## Architecture in one breath
 
-`detect → extract (token adapters + tree-sitter component adapter + Figma adapter)
+`detect → extract (token adapters + ts-morph component adapter + Figma adapter)
 → build+dedup → canonicalize→RawValue → reconcile(value-first) → derive layers
 (similar-to ΔE, commonly-used-with conventions, variant envelopes) → cluster → analyze
 → emit (graph.json, graph.html, REPORT.md, manifest.json)` plus read-side verbs
@@ -74,7 +74,7 @@ AMBIGUOUS.
 
 0. scaffold (schema types, graph.json IO, CLI skeleton, graphology)
 1. Tailwind adapter + value canonicalizer + RawValue + similar-to + query/explain/match
-2. tree-sitter component adapter (2-pass): uses-token, composed-of, instances, variant
+2. ts-morph component adapter (2-pass): uses-token, composed-of, instances, variant
    envelopes, commonly-used-with
 3. Figma adapter via skill + reconciliation + drift/orphan report
 4. context + expressibility; palette-bloat + component-bloat

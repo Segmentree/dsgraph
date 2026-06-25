@@ -18,7 +18,8 @@ TypeScript / Node.
 
 | Need | Choice | Why |
 |---|---|---|
-| Parse UI languages | `web-tree-sitter` | tsx/jsx/vue/svelte/css grammars |
+| Parse components (TSX) | **`ts-morph`** (TS compiler API) | target is 100% TSX — native + type-aware (reads `cva`/`VariantProps`/JSX); "best parser per language" (CSS already uses postcss). `web-tree-sitter` kept for future vue/svelte breadth |
+| Parse CSS | `postcss` | token CSS (`:root`/`@theme`); see §4a |
 | Read Tailwind config | `tailwindcss/resolveConfig` | evaluates the *resolved* theme, not a regex guess |
 | Color math | `culori` / `colorjs.io` | sRGB↔Lab, ΔE2000 |
 | Graph + clustering | `graphology` + `graphology-communities-louvain` | property graph, Louvain |
@@ -185,7 +186,10 @@ v4 adapter above is a specialization of this.
 **CSS-in-JS theme**: styled-components/emotion/vanilla-extract dep → evaluate/parse the
 exported `theme` object → Tokens.
 
-### 4b. Component adapter (tree-sitter, two-pass) — the heavy one
+### 4b. Component adapter (ts-morph / TS compiler API, two-pass) — the heavy one
+
+> Parser note: uses `ts-morph` over the TS compiler AST (not tree-sitter) — the target is
+> all TSX, and the typed AST reads `cva`, JSX, and imports directly. Same two-pass design.
 
 **Pass 1 — definitions (all files, enables cross-file resolution):**
 1. Find component defs: PascalCase fn/const returning JSX; `forwardRef`/`memo`;

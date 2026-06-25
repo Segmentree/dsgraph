@@ -1,10 +1,13 @@
 /** Public entry point — re-exports the schema and graph plumbing. */
 export * from "./schema.js";
+export * from "./tailwind.js";
 export * from "./graph.js";
 export * from "./canonicalize/index.js";
 export * from "./adapters/registry.js";
 export { tailwindV4Adapter } from "./adapters/tailwind-v4.js";
 export { tailwindConfigAdapter, walkTheme } from "./adapters/tailwind-config.js";
+export { reactComponentAdapter } from "./adapters/components/component-adapter.js";
+export { buildClassResolver, type ClassResolver } from "./adapters/components/class-resolver.js";
 export { deriveSimilarTo, DEFAULT_EPSILON } from "./derive/similar-to.js";
 export { deriveComposition } from "./derive/composition.js";
 export { VALUE_TYPES, type ValueDescriptor, type ValueMetric } from "./values/registry.js";

@@ -13,6 +13,8 @@ import type { GraphFragment } from "../schema.js";
 export interface AdapterContext {
   /** Absolute path to the target app root being scanned. */
   root: string;
+  /** class→token resolver, built from token adapters' output (set for component adapters, §4b). */
+  resolveClass?: import("./components/class-resolver.js").ClassResolver;
 }
 
 export interface Adapter {
