@@ -10,6 +10,7 @@ export { reactComponentAdapter } from "./adapters/components/component-adapter.j
 export { buildClassResolver, type ClassResolver } from "./adapters/components/class-resolver.js";
 export { deriveSimilarTo, DEFAULT_EPSILON } from "./derive/similar-to.js";
 export { deriveComposition } from "./derive/composition.js";
+export { deriveCommonlyUsedWith, DEFAULT_MIN_CO_OCCURRENCE } from "./derive/conventions.js";
 export { VALUE_TYPES, type ValueDescriptor, type ValueMetric } from "./values/registry.js";
 export { build, DEFAULT_ADAPTERS, type BuildResult, type BuildOptions } from "./build.js";
 export { resolveSeeds, type Seed } from "./query/seeds.js";

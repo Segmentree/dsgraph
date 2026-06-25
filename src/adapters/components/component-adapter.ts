@@ -24,6 +24,7 @@ import {
 } from "../../schema.js";
 import type { Adapter, AdapterContext } from "../registry.js";
 import type { ResolvedClass } from "./class-resolver.js";
+import { cvaDefs, type CvaInfo } from "./cva.js";
 
 const ADAPTER_NAME = "react-tsx";
 const COMPONENT_SIDE = "code";
@@ -157,7 +158,36 @@ function classStringsInComponent(body: Node): string[] {
   return strings;
 }
 
+/** cva variables referenced inside a component body (`cn(buttonVariants(...))`). */
+function referencedCva(body: Node, cvaMap: Map<string, CvaInfo>): string[] {
+  if (cvaMap.size === 0) return [];
+  const refs = new Set<string>();
+  body.forEachDescendant((d) => {
+    if (Node.isIdentifier(d) && cvaMap.has(d.getText())) refs.add(d.getText());
+  });
+  return [...refs];
+}
+
+/** PascalCase JSX child tags rendered in a component body — candidate child components. */
+function childComponentTags(body: Node): string[] {
+  const tags: string[] = [];
+  body.forEachDescendant((d) => {
+    if (Node.isJsxOpeningElement(d) || Node.isJsxSelfClosingElement(d)) {
+      const name = d.getTagNameNode().getText();
+      if (PASCAL_CASE.test(name)) tags.push(name);
+    }
+  });
+  return tags;
+}
+
 const componentId = (name: string) => `component:${name}@${COMPONENT_SIDE}`;
+
+interface ComponentDefRef {
+  name: string;
+  id: string;
+  body: Node;
+  file: string;
+}
 
 async function extract(ctx: AdapterContext): Promise<GraphFragment> {
   const resolveClass = ctx.resolveClass;
@@ -169,11 +199,12 @@ async function extract(ctx: AdapterContext): Promise<GraphFragment> {
     compilerOptions: { allowJs: true, jsx: 2 /* preserve */ },
   });
 
-  const nodes = new Map<string, ComponentNode>();
-  // aggregate uses-token by component→token→slot
-  const usage = new Map<string, { source: string; target: string; slot: string; instances: number }>();
   const rootAbs = resolve(ctx.root);
 
+  // Pass A — collect every component definition across all files, so JSX child tags in
+  // one file can resolve to components defined in another (cross-file composition).
+  const defs: ComponentDefRef[] = [];
+  const cvaByFile = new Map<string, Map<string, CvaInfo>>();
   for (const file of files) {
     let sf: SourceFile;
     try {
@@ -181,45 +212,86 @@ async function extract(ctx: AdapterContext): Promise<GraphFragment> {
     } catch {
       continue;
     }
-    const defs = componentDefs(sf);
-    if (!defs.length) {
-      project.removeSourceFile(sf);
-      continue;
-    }
     const rel = relative(rootAbs, file).replace(/\\/g, "/");
+    for (const def of componentDefs(sf)) {
+      defs.push({ name: def.name, id: componentId(def.name), body: def.body, file: rel });
+    }
+    const cva = cvaDefs(sf);
+    if (cva.size) cvaByFile.set(rel, cva);
+  }
+  const idByName = new Map<string, string>();
+  for (const d of defs) idByName.set(d.name, d.id);
 
-    for (const def of defs) {
-      const id = componentId(def.name);
-      if (!nodes.has(id)) {
-        nodes.set(id, {
-          id,
-          type: NodeType.Component,
-          label: def.name,
-          props: { framework: FRAMEWORK, side: COMPONENT_SIDE },
-          sources: [{ adapter: ADAPTER_NAME, file: rel, loc: `L${def.body.getStartLineNumber()}` }],
-          confidence: Confidence.EXTRACTED,
-        });
+  // Pass B — per component: node + uses-token (className) + composed-of (child component tags).
+  const nodes = new Map<string, ComponentNode>();
+  const usage = new Map<string, { source: string; target: string; slot: string; instances: number }>();
+  const composed = new Map<string, { source: string; target: string; instances: number }>();
+
+  for (const def of defs) {
+    const node: ComponentNode = nodes.get(def.id) ?? {
+      id: def.id,
+      type: NodeType.Component,
+      label: def.name,
+      props: { framework: FRAMEWORK, side: COMPONENT_SIDE },
+      sources: [{ adapter: ADAPTER_NAME, file: def.file, loc: `L${def.body.getStartLineNumber()}` }],
+      confidence: Confidence.EXTRACTED,
+    };
+    nodes.set(def.id, node);
+
+    // cva: variant axes (props_schema) + the variant class strings this component carries.
+    const cvaMap = cvaByFile.get(def.file);
+    const cvaClasses: string[] = [];
+    if (cvaMap) {
+      for (const varName of referencedCva(def.body, cvaMap)) {
+        const info = cvaMap.get(varName)!;
+        cvaClasses.push(...info.classes);
+        node.props = { ...node.props, props_schema: { ...node.props?.props_schema, ...info.propsSchema } };
       }
-      if (!resolveClass) continue;
-      for (const classString of classStringsInComponent(def.body)) {
+    }
+
+    if (resolveClass) {
+      const classStrings = [...classStringsInComponent(def.body), ...cvaClasses];
+      for (const classString of classStrings) {
         for (const r of resolveClass.resolve(classString)) {
-          const key = `${id}|${r.tokenId}|${r.slot}`;
+          const key = `${def.id}|${r.tokenId}|${r.slot}`;
           const agg = usage.get(key);
           if (agg) agg.instances += 1;
-          else usage.set(key, { source: id, target: r.tokenId, slot: r.slot, instances: 1 });
+          else usage.set(key, { source: def.id, target: r.tokenId, slot: r.slot, instances: 1 });
         }
       }
     }
-    project.removeSourceFile(sf);
+
+    for (const childName of childComponentTags(def.body)) {
+      if (childName === def.name) continue; // self-recursion, not composition
+      const childId = idByName.get(childName);
+      if (!childId) continue; // external/unknown tag (Radix, icons) or intrinsic — skip
+      const key = `${def.id}|${childId}`;
+      const agg = composed.get(key);
+      if (agg) agg.instances += 1;
+      else composed.set(key, { source: def.id, target: childId, instances: 1 });
+    }
   }
 
-  const edges: GraphEdge[] = [...usage.values()].map((u) => ({
-    source: u.source,
-    target: u.target,
-    relation: EdgeRelation.usesToken,
-    props: { slot: u.slot, instances: u.instances },
-    confidence: Confidence.EXTRACTED,
-  }));
+  const edges: GraphEdge[] = [
+    ...[...usage.values()].map(
+      (u): GraphEdge => ({
+        source: u.source,
+        target: u.target,
+        relation: EdgeRelation.usesToken,
+        props: { slot: u.slot, instances: u.instances },
+        confidence: Confidence.EXTRACTED,
+      }),
+    ),
+    ...[...composed.values()].map(
+      (c): GraphEdge => ({
+        source: c.source,
+        target: c.target,
+        relation: EdgeRelation.composedOf,
+        props: { instances: c.instances },
+        confidence: Confidence.EXTRACTED,
+      }),
+    ),
+  ];
 
   return { nodes: [...nodes.values()], edges };
 }

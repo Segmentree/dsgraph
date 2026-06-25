@@ -17,6 +17,7 @@ import { reactComponentAdapter } from "./adapters/components/component-adapter.j
 import { buildClassResolver } from "./adapters/components/class-resolver.js";
 import { deriveSimilarTo } from "./derive/similar-to.js";
 import { deriveComposition } from "./derive/composition.js";
+import { deriveCommonlyUsedWith } from "./derive/conventions.js";
 import { ValueType, type GraphDocument } from "./schema.js";
 
 /** Token adapters run first — they produce the class→token resolver (DESIGN.md §4a). */
@@ -83,6 +84,9 @@ export async function build(root: string, opts: BuildOptions = {}): Promise<Buil
     epsilon: opts.similarEpsilon === undefined ? undefined : { [ValueType.color]: opts.similarEpsilon },
   });
   doc.edges.push(...similarEdges);
+
+  // Derived layer 3: convention edges (commonly-used-with) from composed-of (§6c).
+  doc.edges.push(...deriveCommonlyUsedWith(doc));
 
   const outPath = graphPath(root);
   const writing = opts.write !== false;
