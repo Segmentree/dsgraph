@@ -61,9 +61,51 @@ describe("react component adapter (pass 1)", () => {
     expect(uses).toEqual([{ target: "token:color:card-foreground", slot: "text" }]);
   });
 
-  it("emits no edges when no resolver is provided", async () => {
+  it("emits composed-of when a component renders a known component", () => {
+    // BadgeGroup renders <Badge/> twice → one composed-of edge, instances: 2.
+    const co = doc.edges.filter((e) => e.relation === "composed-of");
+    expect(co).toContainEqual(
+      expect.objectContaining({
+        source: "component:BadgeGroup@code",
+        target: "component:Badge@code",
+        props: { instances: 2 },
+      }),
+    );
+    // Badge renders only a <span> intrinsic → composes nothing.
+    expect(co.find((e) => e.source === "component:Badge@code")).toBeUndefined();
+  });
+
+  it("still emits uses-token without a resolver, but skips token edges", async () => {
     const frag = await reactComponentAdapter.extract({ root: fixtureRoot });
-    expect(frag.edges).toHaveLength(0);
+    // composed-of needs no resolver; uses-token does.
+    expect(frag.edges.some((e) => e.relation === "composed-of")).toBe(true);
+    expect(frag.edges.some((e) => e.relation === "uses-token")).toBe(false);
     expect(frag.nodes.filter((n) => n.type === "Component").length).toBe(2);
+  });
+});
+
+describe("react component adapter — cva variants", () => {
+  const cvaRoot = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__", "cva");
+  let doc: GraphDocument;
+
+  beforeAll(async () => {
+    doc = mergeFragments([await reactComponentAdapter.extract({ root: cvaRoot, resolveClass })]);
+  });
+
+  it("reads variant axes into props_schema", () => {
+    const chip = doc.nodes.find((n) => n.id === "component:Chip@code")!;
+    expect(chip.props?.props_schema).toEqual({
+      tone: ["primary", "muted"],
+      size: ["sm", "md"],
+    });
+  });
+
+  it("pulls token usage out of cva classes (not just className)", () => {
+    const uses = usesToken(doc, "component:Chip@code").map((u) => u.target);
+    // from cva: rounded-md, bg-primary, text-primary-foreground, bg-card-foreground
+    expect(uses).toContain("token:radius:md");
+    expect(uses).toContain("token:color:primary");
+    expect(uses).toContain("token:color:primary-foreground");
+    expect(uses).toContain("token:color:card-foreground");
   });
 });

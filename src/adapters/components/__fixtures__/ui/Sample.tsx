@@ -11,9 +11,14 @@ export function Badge({ className, ...props }: { className?: string }) {
   );
 }
 
-// Multiple components per file (like card.tsx).
+// Multiple components per file (like card.tsx) — this one renders Badge (composed-of).
 export function BadgeGroup({ className }: { className?: string }) {
-  return <div className={cn("flex gap-2 text-card-foreground", className)} />;
+  return (
+    <div className={cn("flex gap-2 text-card-foreground", className)}>
+      <Badge />
+      <Badge />
+    </div>
+  );
 }
 
 // Not a component: lowercase, no JSX.
