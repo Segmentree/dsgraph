@@ -13,12 +13,18 @@ import { writeViz } from "./viz.js";
 import { runAdapters, type Adapter } from "./adapters/registry.js";
 import { tailwindV4Adapter } from "./adapters/tailwind-v4.js";
 import { tailwindConfigAdapter } from "./adapters/tailwind-config.js";
+import { reactComponentAdapter } from "./adapters/components/component-adapter.js";
+import { buildClassResolver } from "./adapters/components/class-resolver.js";
 import { deriveSimilarTo } from "./derive/similar-to.js";
 import { deriveComposition } from "./derive/composition.js";
 import { ValueType, type GraphDocument } from "./schema.js";
 
-/** Token/structural adapters, in registration order (DESIGN.md §4). */
-export const DEFAULT_ADAPTERS: Adapter[] = [tailwindV4Adapter, tailwindConfigAdapter];
+/** Token adapters run first — they produce the class→token resolver (DESIGN.md §4a). */
+export const TOKEN_ADAPTERS: Adapter[] = [tailwindV4Adapter, tailwindConfigAdapter];
+/** Component adapters run second, with the resolver in context (§4b). */
+export const COMPONENT_ADAPTERS: Adapter[] = [reactComponentAdapter];
+/** All structural adapters (back-compat / single-list callers). */
+export const DEFAULT_ADAPTERS: Adapter[] = [...TOKEN_ADAPTERS, ...COMPONENT_ADAPTERS];
 
 export interface BuildResult {
   doc: GraphDocument;
@@ -34,7 +40,10 @@ export interface BuildResult {
 }
 
 export interface BuildOptions {
-  adapters?: Adapter[];
+  /** Token adapters (run first → resolver). */
+  tokenAdapters?: Adapter[];
+  /** Component adapters (run second, given the resolver). */
+  componentAdapters?: Adapter[];
   /** Skip writing graph.json (in-memory build, for tests/queries). */
   write?: boolean;
   /** Emit graph.html alongside graph.json (default true when writing). */
@@ -44,9 +53,22 @@ export interface BuildOptions {
 }
 
 export async function build(root: string, opts: BuildOptions = {}): Promise<BuildResult> {
-  const adapters = opts.adapters ?? DEFAULT_ADAPTERS;
-  const activated = await runAdapters(adapters, { root });
-  const merged = mergeFragments(activated.map((a) => a.fragment));
+  // Phase A — token adapters → token fragments → class→token resolver.
+  const tokenRun = await runAdapters(opts.tokenAdapters ?? TOKEN_ADAPTERS, { root });
+  const tokenFrag = mergeFragments(tokenRun.map((a) => a.fragment));
+  const resolveClass = buildClassResolver(tokenFrag.nodes);
+
+  // Phase B — component adapters, handed the resolver.
+  const componentRun = await runAdapters(opts.componentAdapters ?? COMPONENT_ADAPTERS, {
+    root,
+    resolveClass,
+  });
+
+  const activated = [...tokenRun, ...componentRun];
+  const merged = mergeFragments([
+    { nodes: tokenFrag.nodes, edges: tokenFrag.edges },
+    ...componentRun.map((a) => a.fragment),
+  ]);
 
   // Derived layer 1: materialize composite sub-values + composed-of (§6a). Re-merge so
   // sub-values that equal existing RawValues dedup by id.

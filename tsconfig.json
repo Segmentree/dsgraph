@@ -20,5 +20,5 @@
     "verbatimModuleSyntax": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "references"]
+  "exclude": ["node_modules", "dist", "references", "**/__fixtures__/**"]
 }

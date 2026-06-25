@@ -29,6 +29,7 @@ import {
   type TokenNode,
 } from "../schema.js";
 import { canonicalize, categoryToValueType, isColorSyntax } from "../canonicalize/index.js";
+import { TwNamespace } from "../tailwind.js";
 import { resolveValue, type VarTable } from "./css-resolve.js";
 import type { Adapter, AdapterContext } from "./registry.js";
 
@@ -44,21 +45,21 @@ type Mode = (typeof Mode)[keyof typeof Mode];
 
 /** Tailwind v4 theme namespaces → our token category (longest prefix wins). */
 const NAMESPACE_CATEGORY: Array<[string, TokenCategory]> = [
-  ["color", TokenCategory.color],
-  ["text", TokenCategory.fontSize],
-  ["font-weight", TokenCategory.fontWeight],
-  ["font", TokenCategory.fontFamily],
-  ["leading", TokenCategory.lineHeight],
-  ["tracking", TokenCategory.letterSpacing],
-  ["spacing", TokenCategory.spacing],
-  ["radius", TokenCategory.radius],
-  ["inset-shadow", TokenCategory.shadow],
-  ["drop-shadow", TokenCategory.shadow],
-  ["shadow", TokenCategory.shadow],
-  ["blur", TokenCategory.blur],
-  ["aspect", TokenCategory.aspectRatio],
-  ["ease", TokenCategory.easing],
-  ["z-index", TokenCategory.z],
+  [TwNamespace.color, TokenCategory.color],
+  [TwNamespace.text, TokenCategory.fontSize],
+  [TwNamespace.fontWeight, TokenCategory.fontWeight],
+  [TwNamespace.font, TokenCategory.fontFamily],
+  [TwNamespace.leading, TokenCategory.lineHeight],
+  [TwNamespace.tracking, TokenCategory.letterSpacing],
+  [TwNamespace.spacing, TokenCategory.spacing],
+  [TwNamespace.radius, TokenCategory.radius],
+  [TwNamespace.insetShadow, TokenCategory.shadow],
+  [TwNamespace.dropShadow, TokenCategory.shadow],
+  [TwNamespace.shadow, TokenCategory.shadow],
+  [TwNamespace.blur, TokenCategory.blur],
+  [TwNamespace.aspect, TokenCategory.aspectRatio],
+  [TwNamespace.ease, TokenCategory.easing],
+  [TwNamespace.zIndex, TokenCategory.z],
 ];
 
 /** Directories never worth scanning for token CSS. */
