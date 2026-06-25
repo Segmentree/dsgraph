@@ -17,6 +17,7 @@ import { EdgeRelation, type GraphDocument, type GraphEdge } from "../schema.js";
 export const DEFAULT_MIN_CO_OCCURRENCE = 2;
 const WEIGHT_PRECISION = 3;
 const PAIR_SEP = "|";
+const COMPONENT_ID_PREFIX = "component:";
 
 export interface ConventionOptions {
   minCoOccurrence?: number;
@@ -29,10 +30,12 @@ export function deriveCommonlyUsedWith(
 ): GraphEdge[] {
   const minCo = opts.minCoOccurrence ?? DEFAULT_MIN_CO_OCCURRENCE;
 
-  // parent → distinct child components it renders
+  // parent → distinct child components it renders. Only COMPONENT parents form
+  // conventions — the Router "renders" every route, but routes aren't used together.
   const childrenByParent = new Map<string, Set<string>>();
   for (const e of doc.edges) {
     if (e.relation !== EdgeRelation.composedOf) continue;
+    if (!e.source.startsWith(COMPONENT_ID_PREFIX)) continue;
     const set = childrenByParent.get(e.source) ?? new Set<string>();
     set.add(e.target);
     childrenByParent.set(e.source, set);

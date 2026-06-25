@@ -36,6 +36,8 @@ export const NodeType = {
   Instance: "Instance",
   Screen: "Screen",
   Asset: "Asset",
+  /** The app's routing root (Next/Vue/…) — renders the route-entry components (§4b). */
+  Router: "Router",
 } as const;
 export type NodeType = (typeof NodeType)[keyof typeof NodeType];
 
@@ -174,6 +176,7 @@ export interface InstanceNode extends BaseNode<"Instance"> {
 
 export type ScreenNode = BaseNode<"Screen">;
 export type AssetNode = BaseNode<"Asset">;
+export type RouterNode = BaseNode<"Router">;
 
 export type GraphNode =
   | TokenNode
@@ -181,7 +184,8 @@ export type GraphNode =
   | ComponentNode
   | InstanceNode
   | ScreenNode
-  | AssetNode;
+  | AssetNode
+  | RouterNode;
 
 // ── Edge types ──────────────────────────────────────────────────────────────
 

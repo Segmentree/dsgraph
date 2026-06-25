@@ -44,11 +44,12 @@ program
   .option("--update", "incremental update from manifest (DESIGN.md §12)")
   .option("--watch", "watch + rebuild on save")
   .option("--no-viz", "skip graph.html emission")
+  .option("--instances", "emit a node per component usage (Pass 2; large graph)")
   .option("--resolution <n>", "Louvain resolution", parseFloat)
-  .action(async (path: string, opts: { viz?: boolean }) => {
+  .action(async (path: string, opts: { viz?: boolean; instances?: boolean }) => {
     const { doc, activated, dangling, similar, unresolvedTokens, outPath, vizPath } = await build(
       path,
-      { viz: opts.viz },
+      { viz: opts.viz, emitInstances: opts.instances },
     );
     console.log(`adapters fired: ${activated.length ? activated.join(", ") : "none"}`);
     console.log(`${doc.nodes.length} nodes, ${doc.edges.length} edges (${similar} similar-to) → ${outPath}`);
