@@ -51,6 +51,8 @@ export interface BuildOptions {
   viz?: boolean;
   /** ΔE threshold for the similar-to layer (default DEFAULT_EPSILON). */
   similarEpsilon?: number;
+  /** Emit a node per component usage (Pass 2). Off by default (aggregate envelope only). */
+  emitInstances?: boolean;
 }
 
 export async function build(root: string, opts: BuildOptions = {}): Promise<BuildResult> {
@@ -63,6 +65,7 @@ export async function build(root: string, opts: BuildOptions = {}): Promise<Buil
   const componentRun = await runAdapters(opts.componentAdapters ?? COMPONENT_ADAPTERS, {
     root,
     resolveClass,
+    emitInstances: opts.emitInstances,
   });
 
   const activated = [...tokenRun, ...componentRun];

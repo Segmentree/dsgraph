@@ -20,7 +20,9 @@ import {
   Confidence,
   type GraphEdge,
   type GraphFragment,
+  type GraphNode,
   type ComponentNode,
+  type InstanceNode,
 } from "../../schema.js";
 import type { Adapter, AdapterContext } from "../registry.js";
 import type { ResolvedClass } from "./class-resolver.js";
@@ -180,7 +182,63 @@ function childComponentTags(body: Node): string[] {
   return tags;
 }
 
+const BOOL_TRUE = "true";
+const BOOL_FALSE = "false";
+/** Props excluded from the variant envelope (not discrete style variants). */
+const ENVELOPE_SKIP = new Set(["className", "class", "key", "ref", "style", "id", "children"]);
+const ENVELOPE_SKIP_PREFIXES = ["on", "data-", "aria-"];
+
+/** Static prop bindings on a JSX element (string/boolean literals only; skips dynamic). */
+function literalBindings(el: Node): Record<string, string> {
+  if (!Node.isJsxOpeningElement(el) && !Node.isJsxSelfClosingElement(el)) return {};
+  const out: Record<string, string> = {};
+  for (const attr of el.getAttributes()) {
+    if (!Node.isJsxAttribute(attr)) continue; // spread → dynamic
+    const name = attr.getNameNode().getText();
+    if (ENVELOPE_SKIP.has(name) || ENVELOPE_SKIP_PREFIXES.some((p) => name.startsWith(p))) continue;
+    const init = attr.getInitializer();
+    let value: string | null = null;
+    if (!init) {
+      value = BOOL_TRUE; // boolean shorthand: `disabled`
+    } else if (Node.isStringLiteral(init)) {
+      value = init.getLiteralValue();
+    } else if (Node.isJsxExpression(init)) {
+      const expr = init.getExpression();
+      if (expr && Node.isStringLiteral(expr)) value = expr.getLiteralValue();
+      else if (expr && (expr.getText() === BOOL_TRUE || expr.getText() === BOOL_FALSE)) {
+        value = expr.getText();
+      }
+    }
+    if (value !== null) out[name] = value;
+  }
+  return out;
+}
+
 const componentId = (name: string) => `component:${name}@${COMPONENT_SIDE}`;
+
+// ── routing ───────────────────────────────────────────────────────────────────
+// The router renders the route-entry components directly. Modeling it as a node (with
+// composed-of edges to those entries) means pages/layouts aren't false "orphans" and the
+// graph has a real root. Framework-agnostic by design; Next.js app-router patterns now.
+
+const NEXT_FRAMEWORK = "next";
+const ROUTER_ID = `router:${NEXT_FRAMEWORK}`;
+/** Next.js app-router special files — each is a route entry rendered by the router. */
+const NEXT_ROUTE_FILE_RE = /(^|\/)(page|layout|template|default|error|loading|not-found|global-error)\.[jt]sx$/;
+
+const isRouteFile = (rel: string) => NEXT_ROUTE_FILE_RE.test(rel);
+
+/** Name of a file's default-exported component (the route entry), or null. */
+function defaultExportComponentName(sf: SourceFile): string | null {
+  const fn = sf.getFunctions().find((f) => f.isDefaultExport());
+  if (fn) return fn.getName() ?? null;
+  for (const a of sf.getExportAssignments()) {
+    if (a.isExportEquals()) continue;
+    const e = a.getExpression();
+    if (Node.isIdentifier(e)) return e.getText();
+  }
+  return null;
+}
 
 interface ComponentDefRef {
   name: string;
@@ -205,6 +263,7 @@ async function extract(ctx: AdapterContext): Promise<GraphFragment> {
   // one file can resolve to components defined in another (cross-file composition).
   const defs: ComponentDefRef[] = [];
   const cvaByFile = new Map<string, Map<string, CvaInfo>>();
+  const routeEntries = new Set<string>();
   for (const file of files) {
     let sf: SourceFile;
     try {
@@ -218,6 +277,10 @@ async function extract(ctx: AdapterContext): Promise<GraphFragment> {
     }
     const cva = cvaDefs(sf);
     if (cva.size) cvaByFile.set(rel, cva);
+    if (isRouteFile(rel)) {
+      const name = defaultExportComponentName(sf);
+      if (name && PASCAL_CASE.test(name)) routeEntries.add(name);
+    }
   }
   const idByName = new Map<string, string>();
   for (const d of defs) idByName.set(d.name, d.id);
@@ -272,6 +335,62 @@ async function extract(ctx: AdapterContext): Promise<GraphFragment> {
     }
   }
 
+  // Pass C — usages: aggregate the variant envelope per component (always); emit a node
+  // per usage only when requested (DESIGN §4b pass 2).
+  const envelope = new Map<string, { instances: number; props: Map<string, Map<string, number>> }>();
+  const instanceNodes: InstanceNode[] = [];
+  const instanceEdges: GraphEdge[] = [];
+
+  for (const sf of project.getSourceFiles()) {
+    const rel = relative(rootAbs, sf.getFilePath()).replace(/\\/g, "/");
+    sf.forEachDescendant((d) => {
+      if (!Node.isJsxOpeningElement(d) && !Node.isJsxSelfClosingElement(d)) return;
+      const name = d.getTagNameNode().getText();
+      if (!PASCAL_CASE.test(name)) return;
+      const compId = idByName.get(name);
+      if (!compId) return; // usage of an external/unknown component
+
+      const bindings = literalBindings(d);
+      const env = envelope.get(compId) ?? { instances: 0, props: new Map() };
+      env.instances += 1;
+      for (const [axis, value] of Object.entries(bindings)) {
+        const dist = env.props.get(axis) ?? new Map<string, number>();
+        dist.set(value, (dist.get(value) ?? 0) + 1);
+        env.props.set(axis, dist);
+      }
+      envelope.set(compId, env);
+
+      if (ctx.emitInstances) {
+        const { line, column } = sf.getLineAndColumnAtPos(d.getStart());
+        const loc = `L${line}C${column}`;
+        const id = `instance:${rel}:${loc}`;
+        instanceNodes.push({
+          id,
+          type: NodeType.Instance,
+          label: name,
+          props: { bindings },
+          sources: [{ adapter: ADAPTER_NAME, file: rel, loc }],
+          confidence: Confidence.EXTRACTED,
+        });
+        instanceEdges.push({
+          source: id,
+          target: compId,
+          relation: EdgeRelation.instanceOf,
+          confidence: Confidence.EXTRACTED,
+        });
+      }
+    });
+  }
+
+  // Attach the envelope (usage count + variant-value distribution) to each component.
+  for (const [compId, env] of envelope) {
+    const node = nodes.get(compId);
+    if (!node) continue;
+    const props: Record<string, Record<string, number>> = {};
+    for (const [axis, dist] of env.props) props[axis] = Object.fromEntries(dist);
+    node.props = { ...node.props, usage: { instances: env.instances, props } };
+  }
+
   const edges: GraphEdge[] = [
     ...[...usage.values()].map(
       (u): GraphEdge => ({
@@ -291,9 +410,33 @@ async function extract(ctx: AdapterContext): Promise<GraphFragment> {
         confidence: Confidence.EXTRACTED,
       }),
     ),
+    ...instanceEdges,
   ];
 
-  return { nodes: [...nodes.values()], edges };
+  // Router node + composed-of edges to the route entries it renders directly.
+  const routerNodes: GraphNode[] = [];
+  if (routeEntries.size) {
+    routerNodes.push({
+      id: ROUTER_ID,
+      type: NodeType.Router,
+      label: NEXT_FRAMEWORK,
+      props: { framework: NEXT_FRAMEWORK },
+      sources: [{ adapter: ADAPTER_NAME }],
+      confidence: Confidence.EXTRACTED,
+    });
+    for (const name of routeEntries) {
+      const target = idByName.get(name);
+      if (!target) continue;
+      edges.push({
+        source: ROUTER_ID,
+        target,
+        relation: EdgeRelation.composedOf,
+        confidence: Confidence.EXTRACTED,
+      });
+    }
+  }
+
+  return { nodes: [...nodes.values(), ...instanceNodes, ...routerNodes], edges };
 }
 
 export const reactComponentAdapter: Adapter = {

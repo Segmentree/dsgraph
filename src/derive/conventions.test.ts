@@ -49,4 +49,14 @@ describe("deriveCommonlyUsedWith", () => {
     const d = doc([{ source: "component:A@code", target: "token:x", relation: "uses-token" }]);
     expect(deriveCommonlyUsedWith(d)).toHaveLength(0);
   });
+
+  it("does not mint conventions from the Router (routes aren't 'used together')", () => {
+    // the router renders many route entries, but those aren't co-used components
+    const edges: GraphEdge[] = [
+      { source: "router:next", target: "component:PageA@code", relation: "composed-of" },
+      { source: "router:next", target: "component:PageB@code", relation: "composed-of" },
+      { source: "router:next", target: "component:PageC@code", relation: "composed-of" },
+    ];
+    expect(deriveCommonlyUsedWith(doc(edges), { minCoOccurrence: 1 })).toHaveLength(0);
+  });
 });

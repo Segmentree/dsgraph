@@ -82,6 +82,52 @@ describe("react component adapter (pass 1)", () => {
     expect(frag.edges.some((e) => e.relation === "uses-token")).toBe(false);
     expect(frag.nodes.filter((n) => n.type === "Component").length).toBe(2);
   });
+
+  it("aggregates a variant envelope from usages (no instance nodes by default)", () => {
+    // BadgeGroup renders <Badge variant="primary"/> and <Badge variant="secondary"/>.
+    const badge = doc.nodes.find((n) => n.id === "component:Badge@code")!;
+    expect(badge.props?.usage).toEqual({
+      instances: 2,
+      props: { variant: { primary: 1, secondary: 1 } },
+    });
+    expect(doc.nodes.some((n) => n.type === "Instance")).toBe(false);
+  });
+
+  it("emits Instance nodes + instance-of when emitInstances is set", async () => {
+    const frag = mergeFragments([
+      await reactComponentAdapter.extract({ root: fixtureRoot, resolveClass, emitInstances: true }),
+    ]);
+    const instances = frag.nodes.filter((n) => n.type === "Instance");
+    expect(instances).toHaveLength(2); // two <Badge/> usages
+    expect(instances[0]!.props?.bindings).toEqual({ variant: "primary" });
+    const io = frag.edges.filter((e) => e.relation === "instance-of");
+    expect(io).toHaveLength(2);
+    expect(io.every((e) => e.target === "component:Badge@code")).toBe(true);
+  });
+});
+
+describe("react component adapter — router", () => {
+  const routeRoot = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__", "route");
+
+  it("emits a Router node + composed-of to default-exported route entries", async () => {
+    const frag = mergeFragments([await reactComponentAdapter.extract({ root: routeRoot, resolveClass })]);
+    const router = frag.nodes.find((n) => n.type === "Router")!;
+    expect(router.id).toBe("router:next");
+    expect(router.props?.framework).toBe("next");
+    // HomePage is the page.tsx default export → the router renders it.
+    expect(frag.edges).toContainEqual(
+      expect.objectContaining({
+        source: "router:next",
+        target: "component:HomePage@code",
+        relation: "composed-of",
+      }),
+    );
+    // so HomePage is no longer a zero-inbound orphan
+    const inbound = frag.edges.filter(
+      (e) => e.relation === "composed-of" && e.target === "component:HomePage@code",
+    );
+    expect(inbound.length).toBeGreaterThan(0);
+  });
 });
 
 describe("react component adapter — cva variants", () => {

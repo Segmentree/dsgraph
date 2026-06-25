@@ -15,8 +15,8 @@ export function Badge({ className, ...props }: { className?: string }) {
 export function BadgeGroup({ className }: { className?: string }) {
   return (
     <div className={cn("flex gap-2 text-card-foreground", className)}>
-      <Badge />
-      <Badge />
+      <Badge variant="primary" />
+      <Badge variant="secondary" />
     </div>
   );
 }

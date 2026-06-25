@@ -15,6 +15,8 @@ export interface AdapterContext {
   root: string;
   /** class→token resolver, built from token adapters' output (set for component adapters, §4b). */
   resolveClass?: import("./components/class-resolver.js").ClassResolver;
+  /** Emit a node per component usage (Pass 2). Off by default (aggregate envelope only). */
+  emitInstances?: boolean;
 }
 
 export interface Adapter {
