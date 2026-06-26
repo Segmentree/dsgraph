@@ -47,13 +47,23 @@ program
   .option("--instances", "emit a node per component usage (Pass 2; large graph)")
   .option("--resolution <n>", "Louvain resolution", parseFloat)
   .action(async (path: string, opts: { viz?: boolean; instances?: boolean }) => {
-    const { doc, activated, dangling, similar, unresolvedTokens, outPath, vizPath } = await build(
-      path,
-      { viz: opts.viz, emitInstances: opts.instances },
-    );
+    const { doc, activated, dangling, similar, mapsTo, findings, unresolvedTokens, outPath, vizPath, reportPath: report } =
+      await build(path, { viz: opts.viz, emitInstances: opts.instances });
     console.log(`adapters fired: ${activated.length ? activated.join(", ") : "none"}`);
     console.log(`${doc.nodes.length} nodes, ${doc.edges.length} edges (${similar} similar-to) → ${outPath}`);
+    if (mapsTo) console.log(`${mapsTo} maps-to (figma↔code bridge)`);
+    if (findings.length) {
+      const byKind = findings.reduce<Record<string, number>>((acc, f) => {
+        acc[f.kind] = (acc[f.kind] ?? 0) + 1;
+        return acc;
+      }, {});
+      const summary = Object.entries(byKind)
+        .map(([k, n]) => `${n} ${k}`)
+        .join(", ");
+      console.log(`findings: ${summary}`);
+    }
     if (vizPath) console.log(`viz → ${vizPath}`);
+    if (report) console.log(`report → ${report}`);
     if (unresolvedTokens) console.warn(`⚠ ${unresolvedTokens} token(s) with unresolved values`);
     if (dangling) console.warn(`⚠ ${dangling} dangling edge(s)`);
   });

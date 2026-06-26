@@ -7,25 +7,37 @@
  * analysis attach to this same merged document in later units.
  */
 
+import { writeFile, mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import { mergeFragments, writeGraph, findDanglingEdges } from "./graph.js";
-import { graphPath, vizPath } from "./paths.js";
+import { graphPath, vizPath, reportPath } from "./paths.js";
 import { writeViz } from "./viz.js";
+import { renderReport } from "./report.js";
 import { runAdapters, type Adapter } from "./adapters/registry.js";
 import { tailwindV4Adapter } from "./adapters/tailwind-v4.js";
 import { tailwindConfigAdapter } from "./adapters/tailwind-config.js";
 import { reactComponentAdapter } from "./adapters/components/component-adapter.js";
+import { figmaAdapter } from "./adapters/figma/figma-adapter.js";
 import { buildClassResolver } from "./adapters/components/class-resolver.js";
 import { deriveSimilarTo } from "./derive/similar-to.js";
 import { deriveComposition } from "./derive/composition.js";
 import { deriveCommonlyUsedWith } from "./derive/conventions.js";
-import { ValueType, type GraphDocument } from "./schema.js";
+import { reconcileTokens } from "./reconcile/tokens.js";
+import { reconcileComponents } from "./reconcile/components.js";
+import { ValueType, type GraphDocument, type Finding } from "./schema.js";
 
 /** Token adapters run first — they produce the class→token resolver (DESIGN.md §4a). */
 export const TOKEN_ADAPTERS: Adapter[] = [tailwindV4Adapter, tailwindConfigAdapter];
 /** Component adapters run second, with the resolver in context (§4b). */
 export const COMPONENT_ADAPTERS: Adapter[] = [reactComponentAdapter];
+/** Figma adapter runs third — ingests a `figma.json` capture if the skill wrote one (§4c). */
+export const FIGMA_ADAPTERS: Adapter[] = [figmaAdapter];
 /** All structural adapters (back-compat / single-list callers). */
-export const DEFAULT_ADAPTERS: Adapter[] = [...TOKEN_ADAPTERS, ...COMPONENT_ADAPTERS];
+export const DEFAULT_ADAPTERS: Adapter[] = [
+  ...TOKEN_ADAPTERS,
+  ...COMPONENT_ADAPTERS,
+  ...FIGMA_ADAPTERS,
+];
 
 export interface BuildResult {
   doc: GraphDocument;
@@ -34,10 +46,16 @@ export interface BuildResult {
   dangling: number;
   /** Count of derived similar-to edges. */
   similar: number;
+  /** Count of reconciliation maps-to (bridge) edges between Figma and code. */
+  mapsTo: number;
+  /** Reconciliation findings (drift / near-miss / orphan / synonyms). */
+  findings: Finding[];
   /** Tokens whose value couldn't be canonicalized (visible, not silently dropped). */
   unresolvedTokens: number;
   outPath: string;
   vizPath?: string;
+  /** Path to REPORT.md when reconciliation ran (figma side present). */
+  reportPath?: string;
 }
 
 export interface BuildOptions {
@@ -45,12 +63,16 @@ export interface BuildOptions {
   tokenAdapters?: Adapter[];
   /** Component adapters (run second, given the resolver). */
   componentAdapters?: Adapter[];
+  /** Figma adapters (run third — ingest figma.json if present). */
+  figmaAdapters?: Adapter[];
   /** Skip writing graph.json (in-memory build, for tests/queries). */
   write?: boolean;
   /** Emit graph.html alongside graph.json (default true when writing). */
   viz?: boolean;
   /** ΔE threshold for the similar-to layer (default DEFAULT_EPSILON). */
   similarEpsilon?: number;
+  /** Near-miss ΔE threshold τ for reconciliation (default DEFAULT_TAU). */
+  tau?: number;
   /** Emit a node per component usage (Pass 2). Off by default (aggregate envelope only). */
   emitInstances?: boolean;
 }
@@ -68,10 +90,15 @@ export async function build(root: string, opts: BuildOptions = {}): Promise<Buil
     emitInstances: opts.emitInstances,
   });
 
-  const activated = [...tokenRun, ...componentRun];
+  // Phase C — figma adapter ingests figma.json if the skill wrote one (§4c). It needs
+  // no resolver: its values canonicalize onto the same RawValue ids the token side mints.
+  const figmaRun = await runAdapters(opts.figmaAdapters ?? FIGMA_ADAPTERS, { root });
+
+  const activated = [...tokenRun, ...componentRun, ...figmaRun];
   const merged = mergeFragments([
     { nodes: tokenFrag.nodes, edges: tokenFrag.edges },
     ...componentRun.map((a) => a.fragment),
+    ...figmaRun.map((a) => a.fragment),
   ]);
 
   // Derived layer 1: materialize composite sub-values + composed-of (§6a). Re-merge so
@@ -91,6 +118,17 @@ export async function build(root: string, opts: BuildOptions = {}): Promise<Buil
   // Derived layer 3: convention edges (commonly-used-with) from composed-of (§6c).
   doc.edges.push(...deriveCommonlyUsedWith(doc));
 
+  // Reconciliation (§7): value-first maps-to between Figma and code tokens, then a
+  // structural pass over components (uses the token bridge's RawValue sets). Both are
+  // no-ops when only one side is present (no cross-side pairs → no edges/findings).
+  const tokenRecon = reconcileTokens(doc, { tau: opts.tau });
+  doc.edges.push(...tokenRecon.edges);
+  const componentRecon = reconcileComponents(doc);
+  doc.edges.push(...componentRecon.edges);
+  const mapsToEdges = [...tokenRecon.edges, ...componentRecon.edges];
+  const findings = [...tokenRecon.findings, ...componentRecon.findings];
+  if (findings.length) doc.findings = findings;
+
   const outPath = graphPath(root);
   const writing = opts.write !== false;
   if (writing) await writeGraph(outPath, doc);
@@ -99,6 +137,14 @@ export async function build(root: string, opts: BuildOptions = {}): Promise<Buil
   if (writing && opts.viz !== false) {
     viz = vizPath(root);
     await writeViz(viz, doc);
+  }
+
+  // REPORT.md — only when reconciliation produced something (figma side present).
+  let report: string | undefined;
+  if (writing && (mapsToEdges.length || findings.length)) {
+    report = reportPath(root);
+    await mkdir(dirname(report), { recursive: true });
+    await writeFile(report, renderReport(doc), "utf8");
   }
 
   const unresolvedTokens = doc.nodes.filter(
@@ -110,8 +156,11 @@ export async function build(root: string, opts: BuildOptions = {}): Promise<Buil
     activated: activated.map((a) => a.adapter.name),
     dangling: findDanglingEdges(doc).length,
     similar: similarEdges.length,
+    mapsTo: mapsToEdges.length,
+    findings,
     unresolvedTokens,
     outPath,
     vizPath: viz,
+    reportPath: report,
   };
 }

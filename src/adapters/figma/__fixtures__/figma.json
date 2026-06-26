@@ -1,0 +1,35 @@
+{
+  "source": "figma",
+  "fileKey": "2YnAL6ApeP8Hh9ItoJkdi7",
+  "tokens": [
+    { "name": "base/primary", "category": "color", "modes": { "default": "#2563eb" } },
+    { "name": "tailwind colors/blue/600", "category": "color", "modes": { "default": "#2563eb" } },
+    { "name": "base/primary-alias", "category": "color", "modes": { "default": "#2563eb" }, "alias": "base/primary" },
+    { "name": "base/background", "category": "color", "modes": { "light": "#ffffff", "dark": "#0a0a0a" } },
+    { "name": "spacing/2", "category": "spacing", "modes": { "default": "8" } },
+    { "name": "spacing/4", "category": "spacing", "modes": { "default": "16" } },
+    { "name": "border-radius/rounded-full", "category": "radius", "modes": { "default": "9999" } },
+    { "name": "font-weight/medium", "category": "fontWeight", "modes": { "default": "500" } },
+    { "name": "shadow/xs", "category": "shadow", "modes": { "default": "Effect(type: DROP_SHADOW, color: shadow/xs/color, offset: (0, 1), radius: 2, spread: 0)" } }
+  ],
+  "components": [
+    {
+      "name": "Button",
+      "nodeId": "37:931",
+      "propsSchema": { "variant": ["ghost", "outline"], "size": ["sm", "icon"] },
+      "uses": [
+        { "token": "base/primary", "slot": "surface" },
+        { "token": "spacing/4", "slot": "spacing" },
+        { "token": "border-radius/rounded-full", "slot": "radius" }
+      ],
+      "children": ["Icon"]
+    },
+    { "name": "Icon", "nodeId": "24151:33997" }
+  ],
+  "instances": [
+    { "of": "Button", "nodeId": "34243:31750", "host": "Contact details", "bindings": { "variant": "ghost", "size": "icon" } }
+  ],
+  "screens": [
+    { "name": "Contact details", "nodeId": "34131:89115", "renders": ["Button"] }
+  ]
+}
