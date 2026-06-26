@@ -24,7 +24,11 @@ import { deriveComposition } from "./derive/composition.js";
 import { deriveCommonlyUsedWith } from "./derive/conventions.js";
 import { reconcileTokens } from "./reconcile/tokens.js";
 import { reconcileComponents } from "./reconcile/components.js";
+import { analyzeGraph } from "./analyze/findings.js";
 import { ValueType, type GraphDocument, type Finding } from "./schema.js";
+
+/** Node-id suffix marking the Figma side — reconciliation only runs when this is present. */
+const FIGMA_ID_SUFFIX = "@figma";
 
 /** Token adapters run first — they produce the class→token resolver (DESIGN.md §4a). */
 export const TOKEN_ADAPTERS: Adapter[] = [tailwindV4Adapter, tailwindConfigAdapter];
@@ -119,14 +123,23 @@ export async function build(root: string, opts: BuildOptions = {}): Promise<Buil
   doc.edges.push(...deriveCommonlyUsedWith(doc));
 
   // Reconciliation (§7): value-first maps-to between Figma and code tokens, then a
-  // structural pass over components (uses the token bridge's RawValue sets). Both are
-  // no-ops when only one side is present (no cross-side pairs → no edges/findings).
-  const tokenRecon = reconcileTokens(doc, { tau: opts.tau });
-  doc.edges.push(...tokenRecon.edges);
-  const componentRecon = reconcileComponents(doc);
-  doc.edges.push(...componentRecon.edges);
-  const mapsToEdges = [...tokenRecon.edges, ...componentRecon.edges];
-  const findings = [...tokenRecon.findings, ...componentRecon.findings];
+  // structural pass over components. Only meaningful when BOTH sides are present — with
+  // no Figma capture, every code value would be a trivial "code-only" orphan, so skip.
+  const hasFigma = doc.nodes.some((n) => n.id.endsWith(FIGMA_ID_SUFFIX));
+  const mapsToEdges: GraphDocument["edges"] = [];
+  const reconFindings: Finding[] = [];
+  if (hasFigma) {
+    const tokenRecon = reconcileTokens(doc, { tau: opts.tau });
+    const componentRecon = reconcileComponents(doc);
+    doc.edges.push(...tokenRecon.edges, ...componentRecon.edges);
+    mapsToEdges.push(...tokenRecon.edges, ...componentRecon.edges);
+    reconFindings.push(...tokenRecon.findings, ...componentRecon.findings);
+  }
+
+  // Analysis (§9): code-side health checks — palette/component bloat, god nodes,
+  // unused tokens, orphan components. Runs on any build (no Figma side required).
+  const analysisFindings = analyzeGraph(doc);
+  const findings = [...reconFindings, ...analysisFindings];
   if (findings.length) doc.findings = findings;
 
   const outPath = graphPath(root);

@@ -17,3 +17,6 @@ graphify-out/
 # misc
 .DS_Store
 *.log
+
+# fastembed default model cache (if run without a cacheDir)
+local_cache/
