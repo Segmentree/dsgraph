@@ -249,6 +249,16 @@ export const FindingKind = {
   orphanValue: "orphan-value",
   /** Multiple token names share one value (within a side or across) — duplicate tokens. */
   synonyms: "synonyms",
+  /** A similar-to cluster of ≥N near-identical values, each on a distinct token (§9). */
+  paletteBloat: "palette-bloat",
+  /** Two components with near-identical token+child usage — merge to a variant (§9). */
+  componentBloat: "component-bloat",
+  /** A token/component with outsized degree — high blast radius if changed (§9). */
+  godNode: "god-node",
+  /** A token with zero uses-token in-edges — defined but never applied (§9). */
+  unusedToken: "unused-token",
+  /** A component nothing renders (zero inbound composed-of, incl. the router) (§9). */
+  orphanComponent: "orphan-component",
 } as const;
 export type FindingKind = (typeof FindingKind)[keyof typeof FindingKind];
 

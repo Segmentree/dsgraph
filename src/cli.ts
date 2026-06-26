@@ -16,6 +16,8 @@ import { EDGE_CLASS, type EdgeRelation } from "./schema.js";
 import { match } from "./query/match.js";
 import { explain } from "./query/explain.js";
 import { query } from "./query/query.js";
+import { context } from "./query/context.js";
+import { localEmbedder } from "./embed/local.js";
 import type { DsGraph } from "./query/util.js";
 
 /** Load graph.json from a project root into a traversable graph. */
@@ -122,7 +124,40 @@ program
 program
   .command("context <desc>")
   .description("generation retrieval — build kit + reuse-vs-introduce (§10.5)")
-  .action(todo("Phase 4"));
+  .option("--root <dir>", "project root containing dsgraph-out/", ".")
+  .option("--slot <slot=value...>", "desired slot value(s), e.g. surface=#2563eb radius=8px")
+  .option("--no-embed", "skip the local embedding model (lexical resolution only)")
+  .action(async (desc: string, opts: { root: string; slot?: string[]; embed?: boolean }) => {
+    const graph = await loadGraph(opts.root);
+    const slots = (opts.slot ?? []).map((s) => {
+      const eq = s.indexOf("=");
+      return { slot: s.slice(0, eq), value: s.slice(eq + 1) };
+    });
+    const embedder = opts.embed === false ? undefined : localEmbedder({ root: opts.root });
+    const r = await context(graph, desc, { embedder, slots });
+
+    console.log(`context "${r.query}"`);
+    if (!r.components.length) console.log("  no existing components matched.");
+    for (const c of r.components) {
+      console.log(`  ◆ ${c.label} (${c.score})${c.variants ? ` — variants: ${Object.keys(c.variants).join(", ")}` : ""}`);
+      if (c.tokens.length) {
+        const toks = c.tokens.map((t) => (t.slot ? `${t.slot}:${t.label}` : t.label)).join(", ");
+        console.log(`      tokens: ${toks}`);
+      }
+      if (c.siblings.length) console.log(`      with: ${c.siblings.map((s) => s.label).join(", ")}`);
+    }
+    const e = r.expressibility;
+    console.log(`\n  verdict: ${e.component}${e.base ? ` → ${e.base.label}` : ""}`);
+    for (const d of e.slots) {
+      const detail =
+        d.verdict === "SNAP-SUGGEST" && d.snapTo
+          ? ` → snap to ${d.snapTo.label} (Δ${d.snapTo.distance.toFixed(2)})`
+          : d.tokens?.length
+            ? ` → ${d.tokens.map((t) => t.label).join(", ")}`
+            : "";
+      console.log(`    ${d.slot}=${d.value}: ${d.verdict}${detail}`);
+    }
+  });
 
 program
   .command("match <value>")

@@ -24,6 +24,11 @@ const SECTION_ORDER: { kind: FindingKind; heading: string; blurb: string }[] = [
   { kind: FindingKind.nearMissDrift, heading: "Near-miss drift", blurb: "Values close but not equal (within ΔE τ) — likely the same intent, slightly out of sync." },
   { kind: FindingKind.orphanValue, heading: "Orphan values", blurb: "A value present on only one side." },
   { kind: FindingKind.synonyms, heading: "Synonyms (duplicate values)", blurb: "Multiple token names share one value — candidates for consolidation." },
+  { kind: FindingKind.paletteBloat, heading: "Palette bloat", blurb: "Clusters of near-identical values spread across distinct tokens — the palette could collapse." },
+  { kind: FindingKind.componentBloat, heading: "Component bloat", blurb: "Component pairs with near-identical token/child usage — candidates to merge into one variant axis." },
+  { kind: FindingKind.godNode, heading: "God nodes", blurb: "Highest-degree tokens/components — the biggest blast radius if changed." },
+  { kind: FindingKind.unusedToken, heading: "Unused tokens", blurb: "Defined but never applied — safe to remove (or wire up)." },
+  { kind: FindingKind.orphanComponent, heading: "Orphan components", blurb: "Nothing renders them — likely dead code (a warning, not a certainty)." },
 ];
 const OrphanSide = { figma: "figma", code: "code" } as const;
 
@@ -43,9 +48,13 @@ function summarySection(doc: GraphDocument): string {
     bullet(`**${mapsTo.length}** figma↔code bridges (maps-to): ${byConfidence(Confidence.EXTRACTED)} exact, ${byConfidence(Confidence.INFERRED)} inferred, ${byConfidence(Confidence.AMBIGUOUS)} ambiguous`),
   ];
   if (findings.length) {
-    const counts = SECTION_ORDER.map(
-      (s) => `${findings.filter((f) => f.kind === s.kind).length} ${s.kind}`,
-    ).join(", ");
+    const counts = SECTION_ORDER.map((s) => ({
+      kind: s.kind,
+      n: findings.filter((f) => f.kind === s.kind).length,
+    }))
+      .filter((c) => c.n > 0)
+      .map((c) => `${c.n} ${c.kind}`)
+      .join(", ");
     lines.push(bullet(`findings: ${counts}`));
   } else {
     lines.push(bullet("no findings — design and code are in sync 🎉"));
