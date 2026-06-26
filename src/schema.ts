@@ -237,12 +237,39 @@ export interface GraphEdge {
   confidence?: Confidence;
 }
 
+// ── Findings (analysis output, DESIGN.md §7, §9) ──────────────────────────────
+
+/** A reconciliation/analysis finding surfaced to the user (and later REPORT.md). */
+export const FindingKind = {
+  /** Same (normalized) name on both sides, but different value → design↔code drift. */
+  drift: "drift",
+  /** A figma value with no exact code match, but a code value within ΔE τ (a soft drift). */
+  nearMissDrift: "near-miss-drift",
+  /** A value present on only one side — design-only (undelivered) or code-only (undesigned). */
+  orphanValue: "orphan-value",
+  /** Multiple token names share one value (within a side or across) — duplicate tokens. */
+  synonyms: "synonyms",
+} as const;
+export type FindingKind = (typeof FindingKind)[keyof typeof FindingKind];
+
+export interface Finding {
+  kind: FindingKind;
+  /** Human-readable one-liner. */
+  message: string;
+  /** Node ids the finding implicates (tokens, RawValues). */
+  nodes: string[];
+  props?: Record<string, unknown>;
+  confidence?: Confidence;
+}
+
 // ── Top-level document ────────────────────────────────────────────────────────
 
 export interface GraphDocument {
   version: typeof GRAPH_VERSION;
   nodes: GraphNode[];
   edges: GraphEdge[];
+  /** Reconciliation/analysis findings (§7, §9). Absent until reconciliation runs. */
+  findings?: Finding[];
 }
 
 /** A partial graph emitted by a single adapter, merged in the build step (§5). */

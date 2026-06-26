@@ -75,7 +75,7 @@ function isLab(v: unknown): v is [number, number, number] {
 }
 
 /** Levenshtein edit distance normalized by the longer string → 0 (equal) … 1 (disjoint). */
-function normalizedEdit(a: string, b: string): number {
+export function normalizedEdit(a: string, b: string): number {
   if (a === b) return 0;
   const max = Math.max(a.length, b.length);
   if (max === 0) return 0;
