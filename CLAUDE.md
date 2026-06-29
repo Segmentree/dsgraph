@@ -1,7 +1,8 @@
 # dsgraph — project intent & handoff
 
 > This file is the orientation for any Claude Code session starting in this folder.
-> Read `DESIGN.md` next — it is the full technical spec. This file is the summary +
+> Read `DESIGN.md` next — it is the full technical spec (and `SIMILARITY.md` for the
+> component-similarity engine, Phases 6–10). This file is the summary +
 > the decisions that are already locked.
 
 ## What we are building
@@ -32,9 +33,14 @@ The three uses, combined: **drift detection**, **discoverability/docs**, and
    (graphify's "semantic similarity" is LLM-emitted edges, not a vector index).
 3. **Figma access: Dev Mode MCP** (already connected in the user's IDE). The `/dsgraph`
    skill calls the MCP tools and writes `dsgraph-out/figma.json`; the CLI ingests it.
-4. **Matching is value-first, not name-first.** Canonicalize every token value →
-   `RawValue` node (type-scoped) → tokens sharing a value are linked. Name similarity is
-   only a tiebreaker inside a value cluster. See DESIGN.md §3, §7.
+4. **Two comparison subsystems (refines the old "value-first" rule).** **(a) Values →
+   drift:** canonicalize every token value → `RawValue` (type-scoped); tokens sharing a value
+   are linked; name is only a tiebreaker. This is the *token reconciliation / drift* path
+   (DESIGN.md §3, §7). **(b) Keys + structure → component typing/hierarchy/composition:**
+   components are canonical ordered token-**key**-labeled trees, compared by **tree edit
+   distance** (Zhang–Shasha, key-driven), never by values — two buttons differing only in
+   color are the same component. Jaccard/cosine are sanity pre-filters only. See **SIMILARITY.md**
+   + DESIGN.md §2a. Name is *not* trusted as evidence anywhere.
 5. **Tune thresholds (ΔE ε=10, near-miss τ=3, etc.) on real data**, not upfront.
 6. **graphify = optional structural-import adapter + dev-time oracle, NOT the primary
    extractor.** Reasons in DESIGN.md §0.1. Our native ts-morph component adapter is the
@@ -78,7 +84,18 @@ AMBIGUOUS.
    envelopes, commonly-used-with
 3. Figma adapter via skill + reconciliation + drift/orphan report
 4. context + expressibility; palette-bloat + component-bloat
-5. incremental update, watch, git hook, viz, team merge
+5. incremental update, watch, git hook, viz, team merge (production track, parallel to 6–10)
+
+**Similarity engine (SIMILARITY.md) — supersedes the value-Jaccard component matching of 3–4:**
+
+6. canonical component trees (code + Figma): Stage-0 canonicalize, ordered `(type,{keys})` labels
+7. intrinsic axis → component **types**: Zhang–Shasha (key-driven) + lower-bound prune → Louvain (exact-first; ANN at scale)
+8. extrinsic axis → usage **bundles**: `M[component,page]` (routes + screens) → PMI/TF-IDF → Louvain
+9. **hierarchy** (containment → base/non-base) + **composition / coverage solver**
+10. **verdict rebuilt on the engine**; design-as-input (Figma node → reuse/extend/introduce, with evidence)
+
+**Apex goal:** intent (description *or* design) → **reuse / extend / introduce, with evidence**.
+Agent-first, advisory-only. Build order locked: **foundational trees (6) first**, then the axes.
 
 ## Conventions
 

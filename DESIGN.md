@@ -113,6 +113,24 @@ Property graph. `graph.json` shape:
 **Slots** are a property on `uses-token` edges (not separate nodes). A component's
 **variant envelope** = its `uses-token` edges grouped by `slot`.
 
+### 2a. Component model — keys, trees, bases (two subsystems)
+
+Comparison runs in **two orthogonal subsystems, never conflated**:
+
+- **Values + ΔE → drift** (§7): does design's blue == code's blue. *This is what "value-first"
+  (decision #4) is scoped to — token reconciliation, not component comparison.*
+- **Token *keys* + tree structure → typing / hierarchy / composition** (SIMILARITY.md):
+  components are compared over **keys, never values** — two buttons differing only in color
+  are the same component.
+
+A `Component` is a **canonical ordered labeled tree**: node label `(node-type, {token keys})`,
+children ordered by layout/z-order. A **base** is an irreducible atom; the **design system**
+is the minimal generating set of bases spanning the **design space**. Two similarity axes —
+**intrinsic** (own tree → component *types*) and **extrinsic** (page co-occurrence → usage
+*bundles*) — plus **containment** for the base/specialization *hierarchy*. **Tree edit
+distance** (Zhang–Shasha, key-driven relabel) is the primary structural measure; Jaccard /
+cosine are sanity-check pre-filters only. Full spec: **SIMILARITY.md** (Phases 6–10).
+
 ---
 
 ## 3. Value canonicalization
@@ -305,12 +323,22 @@ bipartite_match → maps-to(INFERRED/AMBIGUOUS by score)
 
 ---
 
-## 8. Clustering
+## 8. Similarity & clustering
 
-- Structural+convention graph → Louvain/Leiden (`resolution` tunable) → feature areas /
-  component families.
-- Similarity graph (RawValue + `similar-to`) → separate clustering → color families;
-  tight dense clusters = palette bloat (§9).
+Two component-similarity axes plus value clustering. **Components are compared over token
+*keys* + tree structure** (§2a), not values — full pipeline in **SIMILARITY.md**.
+
+- **Intrinsic → component types.** Canonical ordered trees → tree edit distance
+  (Zhang–Shasha, key-driven relabel; pq-grams + ANN only at scale) → similarity graph →
+  **Louvain** → emergent types (button/card/input). *Replaces the value-Jaccard component
+  matching of §7/§9.* (SIMILARITY.md §3)
+- **Extrinsic → usage bundles.** `M[component, page]` (pages = code routes + Figma screens) →
+  PMI/TF-IDF reweight → co-occurrence graph → **Louvain** → bundles ("contacts kit"). Needs no
+  trees. (SIMILARITY.md §4)
+- **Hierarchy → containment.** Asymmetric `C(A,B)=|A∩B|/|A|` on key-sets → base/non-base +
+  minimal generating set. (SIMILARITY.md §5)
+- **Value clustering** (unchanged): RawValue + `similar-to` connected components → color
+  families; tight dense clusters = palette bloat (§9).
 - Community ids stable (sorted by size, fixed seed).
 
 ---
@@ -409,6 +437,15 @@ Encodes the rule *prefer variant props over new components*.
 3. emit decision report
 ```
 
+The slot-value loop above (values → drift, §7) is the **value** half. The **component** half
+— "is there a component for this, or a combination of ones we have?" — is rebuilt on the
+similarity engine (Phase 10): the intent (a description **or** a captured design) is
+canonicalized to a tree and run through **intrinsic typing** (which type to reuse),
+**containment** (a base vs a specialization), and the **composition / coverage solver**
+(SIMILARITY.md §6) — which expresses the target as a minimal combination of bases and names
+the **residual bespoke glue**. This is the keys+structure replacement for the value-Jaccard
+component matching; name is no longer trusted as evidence.
+
 ---
 
 ## 12. Incremental update
@@ -466,6 +503,17 @@ layers), `REPORT.md` (god nodes, drift, bloat, orphans, suggested questions),
 | 3 | Figma adapter via skill + reconciliation + drift/orphan report | design↔code bridge |
 | 4 | context + expressibility; palette-bloat + component-bloat | generation + consolidation |
 | 5 | incremental update, watch, git hook, viz polish, team merge | dynamic / production |
+| 6 | canonical component trees (code + Figma): Stage-0 canonicalize, ordered `(type,{keys})` labels | tree substrate |
+| 7 | intrinsic axis: Zhang–Shasha (key-driven relabel) + A1 lower-bound prune → Louvain **types** (exact-first; ANN at scale) | component typing |
+| 8 | extrinsic axis: `M[component,page]` (routes + screens) → PMI/TF-IDF → Louvain **usage bundles** | feature areas |
+| 9 | hierarchy (containment → base/non-base + minimal generating set) + **composition / coverage solver** | "build this from bases" |
+| 10 | **verdict rebuilt on the engine**; design-as-input (Figma node → reuse/extend/introduce, with evidence) | rigorous generation |
+
+Phases 6–10 implement **SIMILARITY.md** and **supersede the value-Jaccard component matching**
+of Phases 3–4 (`reconcileComponents`, `component-bloat`); token reconciliation (values→drift,
+§7) and the value-side analyses (palette-bloat, god-nodes, unused, orphan) are kept. Phase 5 is
+a parallel production track, independent of 6–10. **Apex goal:** intent (description *or*
+design) → reuse / extend / introduce, with evidence. **Agent-first, advisory-only.**
 
 ## 17. Open / to tune on real data
 - ΔE thresholds: ε=10 (similarity), τ=3 (near-miss). Tune.
